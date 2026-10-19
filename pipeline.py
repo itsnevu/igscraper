@@ -289,6 +289,35 @@ def trends(biz, timeframe="today 3-m"):
         return {}
 
 
+def load_fresh(biz, hours):
+    """Data hasil enrich yang dipindai < hours jam lalu, per osm_id."""
+    if hours <= 0 or not os.path.exists(DB):
+        return {}
+    keep = ("instagram", "instagram_source", "emails", "prices", "followers", "engagement_rate",
+            "avg_likes", "media_count", "grade")
+    conn = sqlite3.connect(DB)
+    out = {}
+    try:
+        ids = [b["osm_id"] for b in biz]
+        rows = conn.execute(f"SELECT osm_id, data, last_scanned FROM businesses WHERE osm_id IN "
+                            f"({','.join('?' * len(ids))})", ids).fetchall()
+        now = datetime.now(timezone.utc)
+        for oid, data, scanned in rows:
+            try:
+                age = (now - datetime.fromisoformat(scanned)).total_seconds() / 3600
+            except (TypeError, ValueError):
+                continue
+            d = json.loads(data)
+            # yang dulu gagal (followers 0 padahal punya IG) diproses ulang
+            if age < hours and not (d.get("instagram") and not d.get("followers")):
+                out[oid] = {k: d.get(k) for k in keep if k in d}
+    except sqlite3.OperationalError:
+        pass
+    finally:
+        conn.close()
+    return out
+
+
 # ------------------------------------------------------------
 # 7. simpan
 # ------------------------------------------------------------
@@ -304,8 +333,12 @@ def save(biz, trend, location, out_dir="hasil"):
         b["search_trend"] = trend.get(nm, {})
         row = conn.execute("SELECT history FROM businesses WHERE osm_id=?", (b["osm_id"],)).fetchone()
         hist = json.loads(row[0]) if row and row[0] else []
-        hist.append({"ts": now, "followers": b["followers"], "er": b["engagement_rate"]})
-        b["followers_delta"] = b["followers"] - hist[0]["followers"] if len(hist) > 1 else 0
+        if not b.get("_cached"):  # data dipakai ulang = bukan snapshot baru
+            hist.append({"ts": now, "followers": b["followers"], "er": b["engagement_rate"]})
+        # snapshot 0 = scan gagal, bukan followers asli -> jangan jadi titik awal delta
+        real = [h["followers"] for h in hist if h.get("followers")]
+        b["followers_delta"] = real[-1] - real[0] if len(real) > 1 else 0
+        b.pop("_cached", None)
         conn.execute("""INSERT INTO businesses VALUES (?,?,?,?,?)
             ON CONFLICT(osm_id) DO UPDATE SET location=excluded.location, data=excluded.data,
             last_scanned=excluded.last_scanned, history=excluded.history""",
@@ -335,6 +368,8 @@ def main():
     ap.add_argument("--ig-scrape", type=int, default=3, help="jumlah akun IG teratas yang di-scrape langsung")
     ap.add_argument("--mode", default="direct", help="mode ig_scraper.py")
     ap.add_argument("--no-trends", action="store_true")
+    ap.add_argument("--refresh-hours", type=int, default=24,
+                    help="bisnis yang dipindai lebih baru dari ini tidak di-scrape ulang (0 = paksa ulang)")
     args = ap.parse_args()
 
     lat, lon = geocode(args.location)
@@ -345,11 +380,20 @@ def main():
         return
     for b in biz:
         b.setdefault("emails", []); b.setdefault("prices", [])
-    enrich_websites(biz)
-    enrich_search(biz, args.location)
-    enrich_socialblade(biz)
-    merge_ig_db(biz)
-    scrape_ig(biz, args.ig_scrape, args.mode)
+    fresh = load_fresh(biz, args.refresh_hours)
+    todo = [b for b in biz if b["osm_id"] not in fresh]
+    for b in biz:
+        if b["osm_id"] in fresh:
+            b.update(fresh[b["osm_id"]])
+            b["_cached"] = True
+    log.info(f"      {len(fresh)} bisnis masih fresh (< {args.refresh_hours} jam) dipakai ulang, "
+             f"{len(todo)} diproses")
+    if todo:
+        enrich_websites(todo)
+        enrich_search(todo, args.location)
+        enrich_socialblade(todo)
+        merge_ig_db(todo)
+    scrape_ig(biz, args.ig_scrape, args.mode)  # ig_scraper.py sendiri skip akun < 24 jam
     trend = {} if args.no_trends else trends(biz)
     save(biz, trend, args.location)
 

@@ -257,7 +257,7 @@ def parse_prompt(text: str) -> dict:
 
 OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY", "")
 # model gratis di OpenRouter berakhiran ":free"; ganti lewat env kalau sudah tidak tersedia
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemma-4-31b-it:free")
 
 
 def llm_parse(text: str):
