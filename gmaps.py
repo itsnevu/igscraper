@@ -35,7 +35,11 @@ def _context(browser):
     return NewContext(browser, fingerprint=fp)
 
 
+PUA_RE = re.compile(r"[-]")  # ikon Google Maps (Private Use Area)
+
+
 def _parse_card(label: str, text: str, href: str) -> dict:
+    text = PUA_RE.sub("", text)
     lines = [l.strip() for l in text.split("\n") if l.strip() and l.strip() != label]
     d = {"name": label, "maps_url": href.split("?")[0], "rating": None, "reviews": 0,
          "category": "", "price": "", "address": "", "status": ""}

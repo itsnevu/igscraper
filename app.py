@@ -697,7 +697,30 @@ td .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
 .wa { display: inline-block; background: #22c55e; color: #fff; font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 8px; white-space: nowrap; }
 .empty { text-align: center; color: var(--muted); padding: 50px 0; }
 .note { font-size: 12px; color: var(--muted); margin-top: 10px; }
-.watch { margin-left: auto; font-size: 13px; display: flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; }
+.watch { margin-left: auto; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+         border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 7px 12px;
+         white-space: nowrap; color: var(--text); }
+.watch.on { border-color: var(--good); color: var(--good); }
+.watch input { display: none; }
+.pcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.pc { border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.pc .top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.pc .nm { font-weight: 600; font-size: 14px; }
+.pc .meta { font-size: 12px; color: var(--muted); }
+.pc .acts { display: flex; gap: 8px; align-items: center; margin-top: auto; flex-wrap: wrap; }
+.pc .acts .mini { margin-top: 0; min-height: 30px; }
+.pc details summary { font-size: 12px; color: var(--accent); cursor: pointer; list-style: none; }
+.pc details summary::-webkit-details-marker { display: none; }
+.pc .draft { max-width: none; background: var(--bg); border-radius: 8px; padding: 10px; margin-top: 6px; }
+@media (max-width: 640px) {
+  main { padding: 16px 12px 40px; }
+  .hero { padding: 16px; }
+  .title { gap: 8px; } .title h2 { font-size: 18px; } .watch { margin-left: 0; }
+  .kpis { grid-template-columns: 1fr 1fr; } .kpi .v { font-size: 20px; }
+  .hide-sm { display: none; }
+  .bar { grid-template-columns: 88px 1fr 32px; }
+  td, th { padding: 8px 6px; }
+}
 .offer { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
 .offer input { flex: 1; min-width: 220px; padding: 9px 12px; font-size: 14px; }
 .draft { font-size: 12px; color: var(--muted); margin-top: 6px; max-width: 420px; line-height: 1.45; }
@@ -734,7 +757,9 @@ td .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
 </main>
 <script>
 const $ = s => document.querySelector(s);
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// buang karakter ikon Google Maps (Private Use Area) yang ikut terambil
+const clean = s => String(s ?? '').replace(/[\\uE000-\\uF8FF]/g, '').replace(/\\s*·\\s*$/, '').trim();
+const esc = s => clean(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const num = n => n == null ? '–' : n >= 1e6 ? (n/1e6).toFixed(1)+'jt' : n >= 1e3 ? (n/1e3).toFixed(1)+'rb' : String(n);
 let current = null, wasRunning = false;
 
@@ -760,20 +785,37 @@ function place(p) {
   const links = [p.instagram ? `<a href="https://instagram.com/${esc(p.instagram)}" target="_blank">@${esc(p.instagram)}</a>` : '',
                  p.website ? `<a href="${esc(p.website)}" target="_blank">web</a>` : '',
                  `<a href="${esc(p.maps_url)}" target="_blank">maps</a>`].filter(Boolean).join(' · ');
-  return `<b>${esc(p.name)}</b><div class="sub">${esc(p.category || '')}${p.address ? ' · ' + esc(p.address) : ''}</div><div class="sub">${links}</div>`;
+  const addr = clean(p.address);
+  return `<b>${esc(p.name)}</b><div class="sub">${esc(p.category || '')}${addr ? '<span class="hide-sm"> · ' + esc(addr) + '</span>' : ''}</div><div class="sub">${links}</div>`;
+}
+function prospectCards(rows) {
+  if (!rows || !rows.length) return '<div class="empty" style="padding:24px">Belum ada prospek (butuh data detail telepon/website).</div>';
+  return '<div class="pcards">' + rows.map((p, i) => {
+    const links = [p.instagram ? `<a href="https://instagram.com/${esc(p.instagram)}" target="_blank">@${esc(p.instagram)}</a>` : '',
+                   `<a href="${esc(p.maps_url)}" target="_blank">maps</a>`].filter(Boolean).join(' · ');
+    return `<div class="pc">
+      <div class="top"><div><div class="nm">${esc(p.name)}</div><div class="meta">${esc(p.category || '')} · ${links}</div></div>
+        <div class="star">★ ${p.rating ?? '–'}<div class="meta" style="text-align:right">${num(p.reviews)} ulasan</div></div></div>
+      <div>${(p.gaps || []).map(g => `<span class="tag">${esc(g)}</span>`).join('')}</div>
+      <details><summary>Lihat draf pesan ›</summary><div class="draft">${esc(draft(p))}</div></details>
+      <div class="acts">${p.whatsapp ? `<a class="wa" href="${esc(p.whatsapp)}?text=${encodeURIComponent(draft(p))}" target="_blank">Kirim via WhatsApp</a>`
+                                     : `<span class="meta">${esc(p.phone || 'tanpa nomor HP')}</span>`}
+        <button class="mini" data-copy="${i}">Salin pesan</button></div>
+    </div>`;
+  }).join('') + '</div>';
 }
 function table(rows, mode) {
   if (!rows || !rows.length) return '<div class="empty" style="padding:24px">Tidak ada data di kategori ini.</div>';
   const head = mode === 'prospects'
     ? '<tr><th>Bisnis</th><th>Rating</th><th>Review</th><th>Celah digital & draf pesan</th><th>Hubungi</th></tr>'
-    : '<tr><th>#</th><th>Bisnis</th><th>Rating</th><th>Review</th><th>Review/bln</th><th>Kontak</th></tr>';
+    : '<tr><th class="hide-sm">#</th><th>Bisnis</th><th>Rating</th><th>Review</th><th class="hide-sm">Review/bln</th><th>Kontak</th></tr>';
   const body = rows.map((p, i) => mode === 'prospects'
     ? `<tr><td>${place(p)}</td><td class="star">★ ${p.rating ?? '–'}</td><td>${num(p.reviews)}</td>
          <td>${(p.gaps || []).map(g => `<span class="tag">${esc(g)}</span>`).join('')}
              <div class="draft">${esc(draft(p))}</div><button class="mini" data-copy="${i}">Salin pesan</button></td>
          <td>${p.whatsapp ? `<a class="wa" href="${esc(p.whatsapp)}?text=${encodeURIComponent(draft(p))}" target="_blank">WhatsApp</a>` : esc(p.phone || '')}</td></tr>`
-    : `<tr><td>${i + 1}</td><td>${place(p)}</td><td class="star">★ ${p.rating ?? '–'}</td><td>${num(p.reviews)}</td>
-         <td>${p.reviews_per_month != null ? '+' + p.reviews_per_month : '–'}</td>
+    : `<tr><td class="hide-sm">${i + 1}</td><td>${place(p)}</td><td class="star">★ ${p.rating ?? '–'}</td><td>${num(p.reviews)}</td>
+         <td class="hide-sm">${p.reviews_per_month != null ? '+' + p.reviews_per_month : '–'}</td>
          <td>${p.whatsapp ? `<a class="wa" href="${esc(p.whatsapp)}" target="_blank">WA</a>` : esc(p.phone || '')}</td></tr>`).join('');
   return `<div class="tw"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
 }
@@ -803,7 +845,8 @@ async function render(r) {
   const watched = watches.some(w => w.industry.toLowerCase() === r.industry.toLowerCase() && w.area.toLowerCase() === r.area.toLowerCase());
   $('#report').innerHTML = `
     <div class="title"><h2>${esc(r.industry)} · ${esc(r.area)}</h2><span>${esc(r.created.slice(0,16).replace('T',' '))} UTC</span>
-      <label class="watch"><input type="checkbox" id="watch" ${watched ? 'checked' : ''}> Pantau mingguan (riset ulang otomatis)</label></div>
+      <label class="watch ${watched ? 'on' : ''}" title="Riset ulang otomatis tiap 7 hari selama app berjalan">
+        <input type="checkbox" id="watch" ${watched ? 'checked' : ''}><span id="watchtxt">${watched ? '✓ Dipantau mingguan' : '+ Pantau mingguan'}</span></label></div>
     <div class="kpis">
       <div class="kpi"><div class="l">Bisnis ditemukan</div><div class="v">${s.businesses}</div><div class="s">batas bawah</div></div>
       <div class="kpi"><div class="l">Rating rata-rata</div><div class="v">★ ${s.avg_rating ?? '–'}</div><div class="s">median ${num(s.median_reviews)} review</div></div>
@@ -818,7 +861,7 @@ async function render(r) {
     </div>
     <div class="card"><h3>Prospek bisnis kecil <small>bagus tapi lemah digital — siap dihubungi</small></h3>
       <div class="offer">Penawaranmu: <input id="offer" value="${esc(offer())}" placeholder="mis. bikin website & katalog online"></div>
-      <div id="ptbl">${table(r.prospects, 'prospects')}</div>
+      <div id="ptbl">${prospectCards(r.prospects)}</div>
       <div class="note">Hubungi dengan sopan dan relevan; satu pesan, jangan spam. Nomor diambil dari profil Google Maps publik.</div></div>
     <div class="card"><h3>Peta pemain</h3>
       <div class="tabs">${TABS.map(([k, l], i) => `<button class="tab ${i ? '' : 'on'}" data-k="${k}">${l} (${(r[k] || []).length})</button>`).join('')}</div>
@@ -834,10 +877,15 @@ async function render(r) {
   bindCopy();
   $('#offer').oninput = e => {
     try { localStorage.setItem(OFFER_KEY, e.target.value); } catch (x) {}
-    $('#ptbl').innerHTML = table(r.prospects, 'prospects'); bindCopy();
+    $('#ptbl').innerHTML = prospectCards(r.prospects); bindCopy();
   };
-  $('#watch').onchange = e => fetch('/market/watch', {method: 'POST', body: JSON.stringify(
-    {industry: r.industry, area: r.area, on: e.target.checked, last_run: r.created})});
+  $('#watch').onchange = e => {
+    const on = e.target.checked;
+    e.target.parentElement.classList.toggle('on', on);
+    $('#watchtxt').textContent = on ? '✓ Dipantau mingguan' : '+ Pantau mingguan';
+    fetch('/market/watch', {method: 'POST', body: JSON.stringify(
+      {industry: r.industry, area: r.area, on, last_run: r.created})});
+  };
 }
 function renderCompare(c) {
   if (!c.areas.length) { $('#report').innerHTML = '<div class="empty">Belum ada data untuk dibandingkan.</div>'; return; }
