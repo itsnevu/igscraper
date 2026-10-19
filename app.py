@@ -65,7 +65,7 @@ input[type=text] { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-
   <div class="panel">
     <form onsubmit="ask(event)" style="display:flex;gap:8px">
       <input id="prompt" type="text" autofocus autocomplete="off"
-             placeholder="cariin cafe di Kemang, Jakarta Selatan radius 2 km"
+             placeholder="PROMPT_PLACEHOLDER"
              style="flex:1;font-size:16px;padding:12px">
       <button class="runbtn" type="submit" style="margin:0">Cari</button>
     </form>
@@ -150,6 +150,10 @@ async function ask(ev) {
   const j = await r.json();
   const u = document.getElementById('understood');
   if (!r.ok) { u.innerHTML = '<span style="color:#dc2626">' + j.error + '</span>'; return; }
+  if (j.agent) {
+    u.innerHTML = '<span style="color:#059669">Agent sedang bekerja…</span> jawaban muncul di bagian Log.';
+    poll(); return;
+  }
   const p = j.parsed;
   u.innerHTML = '<span style="color:#059669">Dipahami:</span> <b>' + p.category + '</b> di <b>' +
     p.location + '</b> · radius ' + (p.radius >= 1000 ? (p.radius/1000) + ' km' : p.radius + ' m') +
@@ -249,6 +253,40 @@ def parse_prompt(text: str) -> dict:
     loc = re.sub(r"[^\w\s,.-]", " ", loc)
     out["location"] = re.sub(r"\s+", " ", loc).strip(" ,.-").title()
     return out
+
+
+OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY", "")
+# model gratis di OpenRouter berakhiran ":free"; ganti lewat env kalau sudah tidak tersedia
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+
+
+def llm_parse(text: str):
+    """Pahami prompt pakai LLM via OpenRouter. Return None kalau tidak ada key / gagal."""
+    if not OPENROUTER_KEY:
+        return None
+    import netutil
+    system = (
+        "Ubah permintaan user jadi JSON saja, tanpa teks lain. Kunci: "
+        f'"category" (salah satu: {", ".join(CATEGORIES)}; null kalau tidak disebut), '
+        '"location" (nama tempat di Indonesia, lengkap dengan kota kalau disebut; null kalau tidak ada), '
+        '"radius" (meter, default 2000), "ig_scrape" (jumlah akun IG, default 3).')
+    try:
+        r = netutil.post("https://openrouter.ai/api/v1/chat/completions", retries=2, timeout=30,
+                         headers={"Authorization": f"Bearer {OPENROUTER_KEY}",
+                                  "Content-Type": "application/json"},
+                         json={"model": OPENROUTER_MODEL, "temperature": 0,
+                               "messages": [{"role": "system", "content": system},
+                                            {"role": "user", "content": text}]})
+        content = r.json()["choices"][0]["message"]["content"]
+        j = json.loads(re.search(r"\{.*\}", content, re.S).group(0))
+        out = {"radius": int(j.get("radius") or 2000), "ig_scrape": int(j.get("ig_scrape") or 3),
+               "location": (j.get("location") or "").strip(), "parser": "llm"}
+        if j.get("category") in CATEGORIES:
+            out["category"] = j["category"]
+        return out
+    except Exception as e:
+        print(f"[OpenRouter] gagal, pakai parser kata kunci: {e}")
+        return None
 
 
 def pipeline_cmd(data: dict):
@@ -396,7 +434,9 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/":
             opts = "".join(f'<option value="{c}">{c}</option>' for c in CATEGORIES)
-            self._send(200, PAGE.replace("CATEGORY_OPTIONS", opts))
+            ph = ("tanya agent: kompetitor cafe di Kemang yang paling berkembang siapa?"
+                  if OPENROUTER_KEY else "cariin cafe di Kemang, Jakarta Selatan radius 2 km")
+            self._send(200, PAGE.replace("CATEGORY_OPTIONS", opts).replace("PROMPT_PLACEHOLDER", ph))
         elif path == "/competitors":
             self._send(200, competitors_html())
         elif path == "/report":
@@ -423,11 +463,19 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, json.JSONDecodeError):
             return self._send(400, json.dumps({"error": "Request tidak valid."}), "application/json")
         if self.path == "/ask":
-            parsed = parse_prompt(str(data.get("prompt", ""))[:300])
+            prompt = str(data.get("prompt", ""))[:300]
+            if OPENROUTER_KEY:  # mode agent: LLM yang memutuskan tool apa yang dipanggil
+                err = launch([sys.executable, "-W", "ignore", "-u", "agent.py", prompt])
+                if err:
+                    return self._send(400, json.dumps({"error": err}), "application/json")
+                return self._send(200, json.dumps({"ok": True, "agent": True}), "application/json")
+            parsed = parse_prompt(prompt)
             if "category" not in parsed:
                 return self._send(400, json.dumps({"error": "Jenis bisnisnya apa? Contoh: cafe, resto, salon, baju, gym, laundry."}), "application/json")
             if not parsed["location"]:
                 return self._send(400, json.dumps({"error": "Lokasinya di mana? Contoh: \"cafe di Kemang, Jakarta\"."}), "application/json")
+            parsed["radius"] = min(max(parsed["radius"], 200), 10000)
+            parsed["ig_scrape"] = min(max(parsed["ig_scrape"], 0), 15)
             data = {"job": "pipeline", **parsed}
             err = start_job(data)
             if err:
