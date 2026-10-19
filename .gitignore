@@ -1,0 +1,18 @@
+# environment
+.venv/
+__pycache__/
+.DS_Store
+
+# rahasia — jangan pernah di-commit
+.env
+proxies.txt
+proxies_webshare.txt
+ig_state.json
+
+# data hasil scrape (berisi email/telepon bisnis)
+ig.db
+hasil/
+report.html
+trends.csv
+website_state.json
+competitors.json

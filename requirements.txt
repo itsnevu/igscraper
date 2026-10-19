@@ -1,0 +1,10 @@
+requests
+curl_cffi
+httpx
+playwright
+browserforge[all]
+rapidfuzz
+apscheduler
+beautifulsoup4
+pytrends
+google-api-python-client
