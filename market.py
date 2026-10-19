@@ -20,6 +20,7 @@ import time
 from collections import Counter
 from datetime import datetime, timezone
 
+import datastore
 import gmaps
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
@@ -113,11 +114,9 @@ def compare(industry, areas):
 
 
 def wa_link(phone: str) -> str:
-    d = re.sub(r"\D", "", phone or "")
-    if d.startswith("0"):
-        d = "62" + d[1:]
+    d = datastore.norm_phone(phone)
     # hanya nomor HP (62 8xx) yang bisa WhatsApp; telepon kantor tidak
-    return f"https://wa.me/{d}" if d.startswith("628") and 10 <= len(d) <= 15 else ""
+    return f"https://wa.me/{d}" if datastore.is_mobile(d) else ""
 
 
 def find_instagram(places, limit=25):
@@ -160,8 +159,9 @@ def load_previous(conn, places):
 def save_places(conn, places):
     now = datetime.now(timezone.utc).isoformat()
     for p in places:
-        hist = p.pop("history", [])
-        hist.append({"ts": now, "reviews": p["reviews"], "rating": p["rating"]})
+        hist = datastore.snapshot(p.pop("history", []), {"reviews": p["reviews"], "rating": p["rating"]})
+        for k in ("brand_group",):  # field turunan per-batch, tidak disimpan
+            p.pop(k, None)
         conn.execute("""INSERT INTO places VALUES (?,?,?,?) ON CONFLICT(place_id) DO UPDATE SET
             data=excluded.data, history=excluded.history, last_seen=excluded.last_seen""",
                      (p["place_id"], json.dumps(p, ensure_ascii=False), json.dumps(hist[-60:]), now))
@@ -189,7 +189,9 @@ def build_report(industry, area, places):
 
     def slim(p, extra=()):
         keys = ("name", "rating", "reviews", "category", "address", "maps_url", "instagram",
-                "website", "phone", "reviews_per_month", "status") + tuple(extra)
+                "website", "phone", "reviews_per_month", "status", "emails", "price", "dist_km",
+                "instagram_shared", "website_shared", "branches_in_area", "lat", "lon",
+                "_detailed") + tuple(extra)
         d = {k: p.get(k) for k in keys if p.get(k) not in (None, "")}
         if p.get("phone"):
             d["whatsapp"] = wa_link(p["phone"])
@@ -319,6 +321,12 @@ def run(industry, area, max_results=120, detail_limit=30):
     places = gmaps.search(f"{industry} {area}", max_results=max_results)
     if not places:
         raise SystemExit("Tidak ada hasil dari Google Maps. Coba kata kunci lain.")
+    places, quality = datastore.clean_batch(places)
+    log.info(f"      bersihkan: {quality['raw']} mentah -> {quality['kept']} bersih "
+             f"(tidak valid/tutup {quality['invalid_or_closed']}, di luar wilayah {quality['out_of_area']}, "
+             f"duplikat digabung {quality['duplicates_merged']})")
+    if not places:
+        raise SystemExit("Semua hasil tersaring (tidak valid / di luar wilayah).")
     conn = db()
     load_previous(conn, places)
     # detail: pemimpin pasar + bisnis kecil (calon prospek), yang belum pernah di-detail
@@ -333,8 +341,14 @@ def run(industry, area, max_results=120, detail_limit=30):
     gmaps.details(pick, limit=len(pick))
     log.info("[3/5] Cari akun IG dari website / link-in-bio…")
     find_instagram(places)
+    # normalisasi ulang field yang baru didapat (HP, website, IG) + tandai akun bersama/cabang
+    places = [datastore.clean_place(p) or p for p in places]
+    datastore.flag_shared(places)
+    quality["chains"] = len({p["brand_group"] for p in places if p.get("branches_in_area", 1) > 1})
+    quality["brands"] = len({p["brand_group"] for p in places})
     log.info("[4/5] Susun laporan…")
     report = build_report(industry, area, places)
+    report["data_quality"] = quality
     report["summary"]["capped"] = len(places) >= max_results  # jumlah bisnis mentok di batas
     ai = llm_insights(report)
     if ai:

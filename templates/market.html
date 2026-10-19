@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Riset Pasar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #F6F5F3; --panel: #FFFFFF; --sunk: #ECEBE9; --line: #E2E1E0; --line-2: #EFEEEC;
+  --text: #0B0B0B; --muted: #6F6E6B; --faint: #A3A29F;
+  --ink: #161616; --ink-text: #F8F8F8; --accent: #00BC87; --accent-soft: #E3F6EF;
+  --warn: #C98A00; --bad: #D4483B; --wa: #1FAF5A;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0B0B0B; --panel: #141414; --sunk: #1C1C1C; --line: #262626; --line-2: #1E1E1E;
+  --text: #F2F2F0; --muted: #9A9996; --faint: #6A6967;
+  --ink: #F2F2F0; --ink-text: #0B0B0B; --accent: #19D29C; --accent-soft: #0F2A21;
+  --warn: #E5A92B; --bad: #EF6B5F; --wa: #2BC46A; } }
+:root[data-theme="dark"] {
+  --bg: #0B0B0B; --panel: #141414; --sunk: #1C1C1C; --line: #262626; --line-2: #1E1E1E;
+  --text: #F2F2F0; --muted: #9A9996; --faint: #6A6967;
+  --ink: #F2F2F0; --ink-text: #0B0B0B; --accent: #19D29C; --accent-soft: #0F2A21;
+  --warn: #E5A92B; --bad: #EF6B5F; --wa: #2BC46A; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { font-family: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg);
+       color: var(--text); font-size: 14px; -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+.mono { font-family: "Geist Mono", ui-monospace, monospace; font-size: 12.5px; white-space: nowrap; }
+button { font: inherit; cursor: pointer; }
+
+/* top bar */
+.top { display: flex; align-items: center; gap: 20px; padding: 14px 28px; border-bottom: 1px solid var(--line); background: var(--bg);
+       position: sticky; top: 0; z-index: 20; }
+.brand { font-weight: 700; letter-spacing: -.02em; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.brand i { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); display: inline-block; }
+.top nav { margin-left: auto; display: flex; gap: 18px; }
+.top nav a { text-decoration: none; color: var(--muted); font-size: 13px; }
+.top nav a:hover, .top nav a.on { color: var(--text); }
+
+.wrap { max-width: 1320px; margin: 0 auto; padding: 32px 28px 80px; }
+@media (max-width: 720px) { .wrap { padding: 20px 14px 60px; } .top { padding: 12px 14px; gap: 12px; } }
+
+/* hero */
+h1 { font-size: 34px; letter-spacing: -.035em; line-height: 1.1; margin: 0 0 8px; font-weight: 600; }
+.lead { color: var(--muted); font-size: 15px; margin: 0 0 22px; }
+.search { display: flex; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 6px; }
+.search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 15px; padding: 10px 12px; outline: none; }
+.search .sep { width: 1px; background: var(--line); margin: 6px 0; }
+.btn { background: var(--ink); color: var(--ink-text); border: 0; border-radius: 10px; padding: 0 20px; font-weight: 500; height: 42px; white-space: nowrap; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.ghost { background: var(--panel); color: var(--text); border: 1px solid var(--line); height: 34px; padding: 0 12px; font-size: 13px; }
+@media (max-width: 720px) { .search { flex-direction: column; } .search .sep { display: none; } h1 { font-size: 26px; } }
+.mode { display: inline-flex; background: var(--sunk); border-radius: 10px; padding: 3px; margin-bottom: 12px; }
+.mode button { border: 0; background: transparent; color: var(--muted); padding: 7px 14px; border-radius: 8px; font-size: 13px; }
+.mode button.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+.status { margin-top: 10px; font-size: 13px; color: var(--muted); min-height: 18px; display: flex; align-items: center; gap: 8px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s infinite; }
+@keyframes pulse { 50% { opacity: .25; } }
+.recent { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
+.chip { border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 999px; padding: 5px 11px; font-size: 12px; }
+.chip:hover { color: var(--text); }
+.chip.on { background: var(--ink); color: var(--ink-text); border-color: var(--ink); }
+
+/* report header */
+.rh { display: flex; align-items: flex-end; gap: 16px; margin: 40px 0 16px; flex-wrap: wrap; }
+.rh h2 { margin: 0; font-size: 24px; letter-spacing: -.03em; font-weight: 600; }
+.rh .meta { color: var(--muted); font-size: 13px; }
+.rh .acts { margin-left: auto; display: flex; gap: 8px; }
+.watch.on { border-color: var(--accent); color: var(--accent); }
+
+/* stat strip */
+.stats { display: grid; grid-template-columns: repeat(6, 1fr); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.stat { padding: 16px 18px; border-right: 1px solid var(--line-2); }
+.stat:last-child { border-right: 0; }
+.stat .l { color: var(--muted); font-size: 12px; }
+.stat .v { font-size: 24px; font-weight: 600; letter-spacing: -.03em; margin-top: 6px; }
+.stat .s { color: var(--faint); font-size: 12px; margin-top: 2px; }
+@media (max-width: 1000px) { .stats { grid-template-columns: repeat(3, 1fr); } .stat:nth-child(3n) { border-right: 0; } .stat:nth-child(-n+3) { border-bottom: 1px solid var(--line-2); } }
+@media (max-width: 560px) { .stats { grid-template-columns: repeat(2, 1fr); } .stat { border-bottom: 1px solid var(--line-2); } .stat:nth-child(3n) { border-right: 1px solid var(--line-2); } .stat:nth-child(2n) { border-right: 0; } }
+
+/* insight cards */
+.cols { display: grid; grid-template-columns: 1.3fr 1fr; gap: 12px; margin-top: 12px; }
+@media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+.card h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.card ul { margin: 0; padding-left: 16px; line-height: 1.6; }
+.card li { margin-bottom: 4px; }
+.card.ai { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.card.ai h3 { color: var(--accent); }
+.dist { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.bar { display: grid; grid-template-columns: 64px 1fr 28px; align-items: center; gap: 8px; font-size: 12px; margin: 7px 0; color: var(--muted); }
+.bar .t { height: 6px; background: var(--sunk); border-radius: 4px; overflow: hidden; }
+.bar .fill { height: 100%; background: var(--text); border-radius: 4px; }
+.bar .n { text-align: right; color: var(--text); }
+.quality { font-size: 12px; color: var(--muted); margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-2); line-height: 1.6; }
+
+/* table */
+.tcard { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; margin-top: 12px; overflow: hidden; }
+.tools { display: flex; gap: 10px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.tools .q { flex: 1; min-width: 200px; display: flex; align-items: center; gap: 8px; background: var(--sunk); border-radius: 8px; padding: 0 10px; }
+.tools .q input { border: 0; background: transparent; color: var(--text); font: inherit; padding: 8px 0; width: 100%; outline: none; }
+.filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.f { border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 999px; padding: 5px 10px; font-size: 12px; }
+.f.on { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 500; }
+.f b { font-weight: 500; color: var(--faint); margin-left: 3px; }
+.f.on b { color: inherit; }
+.count { color: var(--muted); font-size: 12px; margin-left: auto; white-space: nowrap; }
+.tw { overflow: auto; max-height: 72vh; }
+table { width: 100%; border-collapse: separate; border-spacing: 0; }
+thead th { position: sticky; top: 0; background: var(--panel); z-index: 2; text-align: left; font-weight: 500; font-size: 12px;
+           color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; user-select: none; }
+thead th.s { cursor: pointer; }
+thead th.s:hover { color: var(--text); }
+thead th .ar { color: var(--faint); margin-left: 4px; font-size: 10px; }
+tbody td { padding: 11px 12px; border-bottom: 1px solid var(--line-2); vertical-align: top; }
+tbody tr:hover td { background: color-mix(in srgb, var(--sunk) 45%, transparent); }
+tbody tr:last-child td { border-bottom: 0; }
+td.biz { min-width: 260px; max-width: 340px; }
+.nm { font-weight: 500; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sub { color: var(--muted); font-size: 12px; margin-top: 2px; line-height: 1.4; }
+.badge { display: inline-flex; align-items: center; font-size: 10.5px; font-weight: 500; padding: 2px 6px; border-radius: 5px;
+         background: var(--sunk); color: var(--muted); white-space: nowrap; }
+.badge.g { background: var(--accent-soft); color: var(--accent); }
+.badge.w { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+.badge.r { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
+.rating { white-space: nowrap; }
+.rating .st { color: var(--warn); }
+.rating b { font-weight: 600; }
+.rv { color: var(--muted); font-size: 12px; }
+.none { color: var(--faint); }
+.lnk { text-decoration: none; display: inline-flex; align-items: center; gap: 5px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lnk:hover { text-decoration: underline; }
+.ico { width: 14px; height: 14px; flex: none; opacity: .75; }
+.wa { display: inline-flex; align-items: center; gap: 5px; background: var(--wa); color: #fff; text-decoration: none; border-radius: 6px;
+      padding: 3px 8px; font-size: 12px; font-weight: 500; margin-top: 4px; }
+.mini { border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 6px; padding: 3px 8px; font-size: 12px; margin-top: 4px; }
+.mini:hover { color: var(--text); }
+tr.draft td { background: var(--bg) !important; padding: 0 12px 14px; }
+.dbox { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; line-height: 1.55; display: flex; gap: 12px; align-items: flex-start; }
+.dbox p { margin: 0; flex: 1; }
+.offer { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.offer input { flex: 1; min-width: 220px; border: 1px solid var(--line); background: var(--bg); color: var(--text); border-radius: 8px; padding: 7px 10px; font: inherit; font-size: 13px; }
+.empty { padding: 60px 20px; text-align: center; color: var(--muted); }
+.cmp-best td { background: var(--accent-soft) !important; }
+.score { font-weight: 600; font-size: 15px; }
+.legal { color: var(--faint); font-size: 12px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand"><i></i>Riset Pasar</div>
+  <nav><a href="/">Chat</a><a href="/market" class="on">Riset pasar</a><a href="/competitors" target="_blank">Kompetitor IG</a><a href="/tools">Manual</a></nav>
+</div>
+
+<div class="wrap">
+  <h1>Peta pasar industri apa pun.</h1>
+  <p class="lead">Scraping langsung dari Google Maps dan website bisnis. Data dibersihkan, tanpa duplikat. Tanpa login.</p>
+  <div class="mode" id="mode"><button class="on" data-m="one">Satu wilayah</button><button data-m="cmp">Bandingkan wilayah</button></div>
+  <form class="search" id="f">
+    <input id="industry" placeholder="Industri, mis. coffee shop, salon, digital agency" required autocomplete="off">
+    <span class="sep"></span>
+    <input id="area" placeholder="Wilayah, mis. Kemang Jakarta" required autocomplete="off">
+    <button class="btn" id="go">Riset</button>
+  </form>
+  <div class="status" id="status"></div>
+  <div class="recent" id="recent"></div>
+
+  <div id="report"></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const clean = s => String(s ?? '').replace(/[-]/g, '').replace(/\s*·\s*$/, '').trim();
+const esc = s => clean(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const num = n => n == null ? '-' : n >= 1e6 ? (n/1e6).toFixed(1).replace('.', ',') + ' jt' : n >= 1e4 ? Math.round(n/1e3) + ' rb' : n.toLocaleString('id-ID');
+const ICON = {
+  web: '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>',
+  ig: '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor"/></svg>',
+  ph: '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>',
+  mail: '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+  pin: '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s7-6.1 7-12a7 7 0 0 0-14 0c0 5.9 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>',
+  search: '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+};
+
+let R = null, current = null, wasRunning = false, mode = 'one', pending = null;
+let view = {q: '', filter: 'all', sort: 'reviews', dir: -1, open: null};
+
+// ---------- data helpers ----------
+const waOf = p => {
+  let d = String(p.phone || '').replace(/\D/g, '');
+  if (d.startsWith('0')) d = '62' + d.slice(1);
+  return d.startsWith('628') && d.length >= 10 && d.length <= 15 ? 'https://wa.me/' + d : '';
+};
+const fmtPhone = p => {
+  let d = String(p.phone || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('62')) d = '0' + d.slice(2);
+  return d.replace(/^(\d{4})(\d{4})(\d+)$/, '$1-$2-$3');
+};
+const host = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return u; } };
+function gapsOf(p) {
+  if (!p._detailed) return null; // belum diambil detailnya: jangan disimpulkan tidak punya website
+  const g = [];
+  if (!p.website) g.push('tanpa website');
+  if (!p.instagram || p.instagram_shared) g.push('IG tidak ditemukan');
+  if ((p.reviews || 0) < 100) g.push('review sedikit');
+  if (p.rating && p.rating < 4.3) g.push('rating ' + p.rating);
+  return g;
+}
+const isGem = p => p.rating >= 4.7 && p.reviews >= 15 && p.reviews < 300;
+const isWeak = p => p.rating && p.rating < 4.3 && p.reviews >= 150;
+const isProspect = p => { const g = gapsOf(p); return g && g.length && p.reviews <= 800 && (waOf(p) || p.instagram); };
+const FILTERS = [
+  ['all', 'Semua', p => true],
+  ['prospect', 'Prospek', isProspect],
+  ['wa', 'Bisa WhatsApp', p => !!waOf(p)],
+  ['web', 'Punya website', p => !!p.website],
+  ['noweb', 'Tanpa website', p => p._detailed && !p.website],
+  ['ig', 'Punya IG', p => !!p.instagram],
+  ['gem', 'Hidden gem', isGem],
+  ['weak', 'Rating rendah, ramai', isWeak],
+];
+
+// ---------- outreach draft ----------
+const OFFER_KEY = 'offer';
+const offer = () => { try { return localStorage.getItem(OFFER_KEY) || 'meningkatkan penjualan lewat kehadiran online'; } catch (e) { return 'meningkatkan penjualan lewat kehadiran online'; } };
+const short = n => clean(n).split(/\s[-|@·,(]\s?/)[0].trim();
+function draft(p) {
+  const g = gapsOf(p) || [];
+  const praise = p.rating >= 4.5 ? `rating ${String(p.rating).replace('.', ',')} dari ${p.reviews} ulasan di Google Maps, keren banget!` : `sudah ${p.reviews} ulasan di Google Maps.`;
+  const why = g.includes('tanpa website') ? 'Saya lihat belum ada website atau katalog online, padahal banyak calon pelanggan cek dulu di Google sebelum datang.'
+            : g.includes('IG tidak ditemukan') ? 'Saya belum menemukan Instagram resminya, padahal banyak pelanggan cari referensi di sana.'
+            : g.includes('review sedikit') ? 'Ulasannya masih bisa ditambah supaya lebih sering muncul di pencarian.'
+            : 'Masih ada ruang untuk tampil lebih menonjol dibanding pesaing sekitar.';
+  return `Halo kak, salam kenal. Saya lihat ${short(p.name)} punya ${praise} ${why} Kebetulan saya bantu bisnis ${R.industry} di sekitar ${R.area} untuk ${offer()}. Boleh saya kirim contoh singkatnya? Terima kasih 🙏`;
+}
+
+// ---------- recent / load ----------
+async function loadRecent(selectId) {
+  const list = await (await fetch('/market/reports')).json();
+  $('#recent').innerHTML = list.map(r => `<button class="chip" data-id="${r.id}">${esc(r.industry)} · ${esc(r.area)}</button>`).join('');
+  document.querySelectorAll('#recent .chip').forEach(c => c.onclick = () => show(c.dataset.id));
+  const id = selectId || (list[0] && list[0].id);
+  if (id && (!current || selectId)) show(id);
+  if (!list.length) $('#report').innerHTML = '<div class="empty">Belum ada riset. Isi industri dan wilayah di atas.</div>';
+}
+async function show(id) {
+  current = id;
+  document.querySelectorAll('#recent .chip').forEach(c => c.classList.toggle('on', c.dataset.id == id));
+  R = await (await fetch('/market/report?id=' + id)).json();
+  view = {q: '', filter: 'all', sort: 'reviews', dir: -1, open: null};
+  await renderReport();
+}
+
+// ---------- report ----------
+function bars(rows) {
+  const mx = Math.max(1, ...rows.map(r => r[1]));
+  return rows.map(([k, v]) => `<div class="bar"><span>${esc(k)}</span><div class="t"><div class="fill" style="width:${v / mx * 100}%"></div></div><span class="n">${v}</span></div>`).join('');
+}
+async function renderReport() {
+  const s = R.summary, d = R.digital, q = R.data_quality;
+  const watches = await (await fetch('/market/watches')).json();
+  const watched = watches.some(w => w.industry.toLowerCase() === R.industry.toLowerCase() && w.area.toLowerCase() === R.area.toLowerCase());
+  const all = R.all || [];
+  $('#report').innerHTML = `
+    <div class="rh"><div><h2>${esc(R.industry)} · ${esc(R.area)}</h2>
+        <div class="meta">Discrape ${new Date(R.created).toLocaleString('id-ID', {dateStyle: 'medium', timeStyle: 'short'})} dari Google Maps</div></div>
+      <div class="acts"><button class="btn ghost watch ${watched ? 'on' : ''}" id="watch">${watched ? '✓ Dipantau mingguan' : '+ Pantau mingguan'}</button>
+        <button class="btn ghost" id="csv">Ekspor CSV</button></div></div>
+    <div class="stats">
+      <div class="stat"><div class="l">Bisnis</div><div class="v">${s.businesses}</div><div class="s">${q ? q.brands + ' brand' : 'batas bawah'}${s.capped ? ', mentok batas' : ''}</div></div>
+      <div class="stat"><div class="l">Rating rata-rata</div><div class="v">${s.avg_rating ?? '-'}</div><div class="s">median ${num(s.median_reviews)} ulasan</div></div>
+      <div class="stat"><div class="l">Total ulasan</div><div class="v">${num(s.total_reviews)}</div><div class="s">proksi permintaan</div></div>
+      <div class="stat"><div class="l">Top 3 menguasai</div><div class="v">${s.top3_share}%</div><div class="s">${esc(s.concentration.split(' (')[0])}</div></div>
+      <div class="stat"><div class="l">Punya website</div><div class="v">${d.website}%</div><div class="s">IG ${d.instagram}%, n=${d.sampled}</div></div>
+      <div class="stat"><div class="l">Bisa WhatsApp</div><div class="v">${d.whatsapp}%</div><div class="s">dari sampel detail</div></div>
+    </div>
+    <div class="cols">
+      <div>
+        ${R.ai_strategy ? `<div class="card ai" style="margin-bottom:12px"><h3>Strategi</h3><ul>${R.ai_strategy.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+        <div class="card"><h3>Temuan</h3><ul>${R.insights.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>
+      </div>
+      <div class="card"><h3>Sebaran</h3>
+        <div class="dist"><div><div class="sub" style="margin-bottom:4px">Rating</div>${bars(R.rating_buckets)}</div>
+          <div><div class="sub" style="margin-bottom:4px">Jumlah ulasan</div>${bars(R.size_buckets)}</div></div>
+        ${q ? `<div class="quality"><b>Kualitas data:</b> ${q.raw} hasil mentah, ${q.kept} disimpan. Dibuang ${q.invalid_or_closed} tidak valid/tutup,
+          ${q.out_of_area} di luar wilayah, ${q.duplicates_merged} duplikat digabung. ${q.chains} brand punya lebih dari satu cabang.</div>` : ''}
+      </div>
+    </div>
+    <div class="tcard">
+      <div class="tools">
+        <label class="q">${ICON.search}<input id="q" placeholder="Cari nama, alamat, kategori, @ig, website"></label>
+        <div class="filters" id="filters"></div>
+        <span class="count" id="count"></span>
+      </div>
+      <div class="offer" id="offerbar" style="display:none">Penawaranmu untuk draf pesan:
+        <input id="offer" value="${esc(offer())}" placeholder="mis. bikin website dan katalog online"></div>
+      <div class="tw"><table><thead><tr>
+        <th class="s" data-k="name">Bisnis</th><th class="s" data-k="rating">Google Maps</th><th class="s" data-k="rpm">Ulasan/bln</th>
+        <th>Telepon</th><th class="s" data-k="website">Website</th><th class="s" data-k="instagram">Instagram</th><th>Email</th>
+        <th class="s" data-k="dist">Jarak</th><th>Peta</th>
+      </tr></thead><tbody id="rows"></tbody></table></div>
+    </div>
+    <div class="legal">Semua baris hasil scraping Google Maps dan website bisnis. Kolom kosong berarti tidak tercantum di sumber, atau detailnya belum diambil (ditandai "belum dicek"). Hubungi secukupnya, satu pesan, jangan spam.</div>`;
+
+  $('#filters').innerHTML = FILTERS.map(([k, l, fn]) => `<button class="f ${k === view.filter ? 'on' : ''}" data-f="${k}">${l}<b>${all.filter(fn).length}</b></button>`).join('');
+  document.querySelectorAll('#filters .f').forEach(b => b.onclick = () => { view.filter = b.dataset.f; view.open = null; renderRows();
+    document.querySelectorAll('#filters .f').forEach(x => x.classList.toggle('on', x === b)); });
+  document.querySelectorAll('thead th.s').forEach(th => th.onclick = () => {
+    const k = th.dataset.k; view.dir = view.sort === k ? -view.dir : (k === 'name' || k === 'dist' ? 1 : -1); view.sort = k; renderRows(); });
+  $('#q').oninput = e => { view.q = e.target.value.toLowerCase(); renderRows(); };
+  $('#offer').oninput = e => { try { localStorage.setItem(OFFER_KEY, e.target.value); } catch (x) {} renderRows(); };
+  $('#watch').onclick = async e => {
+    const on = !e.target.classList.contains('on');
+    e.target.classList.toggle('on', on); e.target.textContent = on ? '✓ Dipantau mingguan' : '+ Pantau mingguan';
+    await fetch('/market/watch', {method: 'POST', body: JSON.stringify({industry: R.industry, area: R.area, on, last_run: R.created})});
+  };
+  $('#csv').onclick = exportCsv;
+  renderRows();
+}
+
+function filtered() {
+  const fn = FILTERS.find(f => f[0] === view.filter)[2];
+  let rows = (R.all || []).filter(fn);
+  if (view.q) rows = rows.filter(p => [p.name, p.address, p.category, p.instagram, p.website, p.phone].join(' ').toLowerCase().includes(view.q));
+  const key = {name: p => clean(p.name).toLowerCase(), rating: p => (p.rating || 0) * 1e6 + (p.reviews || 0), reviews: p => p.reviews || 0,
+               rpm: p => p.reviews_per_month ?? -1, website: p => p.website ? 1 : 0, instagram: p => p.instagram ? 1 : 0, dist: p => p.dist_km ?? 999}[view.sort];
+  return rows.sort((a, b) => { const x = key(a), y = key(b); return (x > y ? 1 : x < y ? -1 : 0) * view.dir; });
+}
+function renderRows() {
+  const rows = filtered();
+  $('#offerbar').style.display = view.filter === 'prospect' ? '' : 'none';
+  $('#count').textContent = `${rows.length} dari ${(R.all || []).length} bisnis`;
+  document.querySelectorAll('thead th.s').forEach(th => {
+    th.querySelector('.ar')?.remove();
+    if (th.dataset.k === view.sort || (view.sort === 'reviews' && th.dataset.k === 'rating'))
+      th.insertAdjacentHTML('beforeend', `<span class="ar">${view.dir > 0 ? '▲' : '▼'}</span>`);
+  });
+  if (!rows.length) { $('#rows').innerHTML = '<tr><td colspan="9" class="empty">Tidak ada bisnis yang cocok.</td></tr>'; return; }
+  $('#rows').innerHTML = rows.map((p, i) => {
+    const g = gapsOf(p), wa = waOf(p), unk = '<span class="none">belum dicek</span>', no = '<span class="none">-</span>';
+    const badges = [isGem(p) ? '<span class="badge g">hidden gem</span>' : '', isWeak(p) ? '<span class="badge r">rating rendah</span>' : '',
+                    p.branches_in_area > 1 ? `<span class="badge">${p.branches_in_area} cabang</span>` : '',
+                    isProspect(p) ? '<span class="badge w">prospek</span>' : ''].join('');
+    const phone = p.phone ? `<div class="mono">${esc(fmtPhone(p))}</div>${wa ? `<a class="wa" href="${wa}?text=${encodeURIComponent(draft(p))}" target="_blank">WhatsApp</a>` : ''}`
+                          : (p._detailed ? no : unk);
+    const web = p.website ? `<a class="lnk" href="${esc(p.website)}" target="_blank">${ICON.web}${esc(host(p.website))}</a>` : (p._detailed ? no : unk);
+    const ig = p.instagram ? `<a class="lnk" href="https://instagram.com/${esc(p.instagram)}" target="_blank">${ICON.ig}@${esc(p.instagram)}</a>${p.instagram_shared ? '<div class="sub">akun brand</div>' : ''}`
+                           : (p._detailed ? no : unk);
+    const mail = (p.emails || []).length ? p.emails.slice(0, 2).map(e => `<a class="lnk" href="mailto:${esc(e)}">${ICON.mail}${esc(e)}</a>`).join('<br>') : no;
+    const row = `<tr>
+      <td class="biz"><div class="nm">${esc(p.name)} ${badges}</div><div class="sub">${esc(p.category || '')}${p.price ? ' · ' + esc(p.price) : ''}</div>
+        <div class="sub">${esc(p.address || '')}</div>
+        ${g && g.length ? `<button class="mini" data-d="${i}">${view.open === i ? 'Tutup draf' : 'Draf pesan'}</button>` : ''}</td>
+      <td class="rating">${p.rating ? `<span class="st">★</span> <b>${String(p.rating).replace('.', ',')}</b>` : no}<div class="rv">${num(p.reviews)} ulasan</div></td>
+      <td>${p.reviews_per_month != null ? (p.reviews_per_month > 0 ? '<span style="color:var(--accent)">+' + p.reviews_per_month + '</span>' : p.reviews_per_month) : no}</td>
+      <td>${phone}</td><td>${web}</td><td>${ig}</td><td>${mail}</td>
+      <td class="mono">${p.dist_km != null ? String(p.dist_km).replace('.', ',') + ' km' : no}</td>
+      <td><a class="lnk" href="${esc(p.maps_url)}" target="_blank">${ICON.pin}Buka</a></td></tr>`;
+    const dr = view.open === i ? `<tr class="draft"><td colspan="9"><div class="dbox"><p>${esc(draft(p))}</p>
+        <button class="btn ghost" data-c="${i}">Salin</button></div></td></tr>` : '';
+    return row + dr;
+  }).join('');
+  document.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { view.open = view.open === +b.dataset.d ? null : +b.dataset.d;
+    if (view.open != null) { view.filter = view.filter; $('#offerbar').style.display = ''; } renderRows(); });
+  document.querySelectorAll('[data-c]').forEach(b => b.onclick = async () => {
+    try { await navigator.clipboard.writeText(draft(rows[+b.dataset.c])); b.textContent = 'Tersalin ✓'; } catch (e) { b.textContent = 'Gagal'; } });
+}
+function exportCsv() {
+  const cols = ['name', 'category', 'rating', 'reviews', 'reviews_per_month', 'phone', 'website', 'instagram', 'emails', 'address', 'dist_km', 'maps_url'];
+  const q = v => '"' + String(Array.isArray(v) ? v.join(' ') : v ?? '').replace(/"/g, '""') + '"';
+  const lines = [cols.join(',')].concat(filtered().map(p => cols.map(c => q(c === 'name' ? clean(p.name) : p[c])).join(',')));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + lines.join('\n')], {type: 'text/csv'}));
+  a.download = `${R.industry}-${R.area}.csv`.replace(/\s+/g, '-').toLowerCase(); a.click();
+}
+
+// ---------- compare ----------
+function renderCompare(c) {
+  if (!c.areas.length) { $('#report').innerHTML = '<div class="empty">Belum ada data untuk dibandingkan.</div>'; return; }
+  $('#report').innerHTML = `
+    <div class="rh"><div><h2>${esc(c.industry)} · ${c.areas.length} wilayah</h2><div class="meta">Diurutkan dari skor peluang tertinggi</div></div></div>
+    <div class="card"><h3>Kesimpulan</h3><ul>${c.insights.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>
+    <div class="tcard"><div class="tw"><table><thead><tr><th>Wilayah</th><th>Skor peluang</th><th>Bisnis</th><th>Rating</th><th>Ulasan/bisnis</th>
+      <th>Top 3</th><th>Hidden gem</th><th>Rating rendah</th><th>Website</th><th>WhatsApp</th><th>Prospek</th></tr></thead><tbody>
+      ${c.areas.map((a, i) => `<tr class="${i ? '' : 'cmp-best'}"><td><div class="nm">${esc(a.area)}</div><button class="mini" data-rid="${a.report_id}">Buka laporan</button></td>
+        <td class="score">${a.opportunity}</td><td>${a.businesses}${a.capped ? '+' : ''}</td><td>${a.avg_rating ?? '-'}</td><td>${num(a.reviews_per_business)}</td>
+        <td>${a.top3_share}%</td><td>${a.gems}</td><td>${a.weak}</td><td>${a.website_pct}%</td><td>${a.whatsapp_pct}%</td><td>${a.prospects}</td></tr>`).join('')}
+    </tbody></table></div></div>`;
+  document.querySelectorAll('[data-rid]').forEach(b => b.onclick = () => show(b.dataset.rid));
+}
+
+// ---------- run ----------
+document.querySelectorAll('#mode button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#mode button').forEach(x => x.classList.toggle('on', x === b));
+  mode = b.dataset.m;
+  $('#area').placeholder = mode === 'cmp' ? 'Kemang Jakarta; Senopati Jakarta; Tebet Jakarta' : 'Wilayah, mis. Kemang Jakarta';
+  $('#go').textContent = mode === 'cmp' ? 'Bandingkan' : 'Riset';
+});
+$('#f').onsubmit = async e => {
+  e.preventDefault();
+  let r;
+  if (mode === 'cmp') {
+    pending = {industry: $('#industry').value, areas: $('#area').value.split(/[;\n]/).map(s => s.trim()).filter(Boolean)};
+    r = await fetch('/market/compare/run', {method: 'POST', body: JSON.stringify(pending)});
+  } else {
+    pending = null;
+    r = await fetch('/market/run', {method: 'POST', body: JSON.stringify({industry: $('#industry').value, area: $('#area').value})});
+  }
+  const j = await r.json();
+  if (!r.ok) { $('#status').textContent = j.error; return; }
+  poll();
+};
+const STEP = {'1/5': 'Mencari di Google Maps', '2/5': 'Mengambil telepon, website, IG', '3/5': 'Mencari IG dari website', '4/5': 'Menyusun laporan', '5/5': 'Menyimpan'};
+async function poll() {
+  const j = await (await fetch('/log')).json();
+  const log = j.log || '';
+  $('#go').disabled = j.running;
+  if (j.running) {
+    const m = [...log.matchAll(/\[(\d\/5)\]/g)].pop(), c = [...log.matchAll(/\[compare\] (wilayah[^\n]*)/g)].pop();
+    $('#status').innerHTML = `<span class="dot"></span>${c ? esc(c[1]) + ' · ' : ''}${m ? STEP[m[1]] : 'Memulai'}…`;
+    setTimeout(poll, 1500);
+  } else if (wasRunning) {
+    if (pending && /COMPARE_DONE/.test(log)) {
+      $('#status').textContent = 'Selesai.';
+      renderCompare(await (await fetch('/market/compare?industry=' + encodeURIComponent(pending.industry) + '&areas=' + encodeURIComponent(pending.areas.join(';')))).json());
+      loadRecent(); current = 'cmp';
+    } else {
+      const m = [...log.matchAll(/REPORT_ID=(\d+)/g)].pop();
+      $('#status').textContent = m ? 'Selesai.' : 'Gagal: ' + (log.trim().split('\n').slice(-1)[0] || '');
+      loadRecent(m && m[1]);
+    }
+  }
+  wasRunning = j.running;
+}
+loadRecent(); poll();
+</script>
+</body>
+</html>

@@ -901,7 +901,8 @@ class Storage:
                 (pr.username,))
             row = cur.fetchone()
             history = json.loads(row[0]) if row and row[0] else []
-            history.append({"ts": pr.scraped_at, "followers": pr.followers})
+            from datastore import snapshot  # hanya catat kalau angka berubah / gagal (0) tidak dicatat
+            history = snapshot(history, {"followers": pr.followers})
             history = history[-30:]  # simpan 30 snapshot terakhir
             self.conn.execute("""
                 INSERT INTO profiles (username, data, followers, last_scraped, followers_history)

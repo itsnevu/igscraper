@@ -363,7 +363,8 @@ def save(biz, trend, location, out_dir="hasil"):
         row = conn.execute("SELECT history FROM businesses WHERE osm_id=?", (b["osm_id"],)).fetchone()
         hist = json.loads(row[0]) if row and row[0] else []
         if not b.get("_cached"):  # data dipakai ulang = bukan snapshot baru
-            hist.append({"ts": now, "followers": b["followers"], "er": b["engagement_rate"]})
+            from datastore import snapshot  # hanya catat kalau angka berubah
+            hist = snapshot(hist, {"followers": b["followers"], "er": b["engagement_rate"]})
         # snapshot 0 = scan gagal, bukan followers asli -> jangan jadi titik awal delta
         real = [h["followers"] for h in hist if h.get("followers")]
         b["followers_delta"] = real[-1] - real[0] if len(real) > 1 else 0
