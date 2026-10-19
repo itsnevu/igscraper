@@ -421,6 +421,220 @@ Tren Google = rata-rata 4 minggu terakhir vs 4 minggu sebelumnya.</p>
 <script>{REPORT_JS}</script></body></html>"""
 
 
+# ------------------------------------------------------------
+# CHAT (agent)
+# ------------------------------------------------------------
+
+CHAT = {"sessions": {}, "jobs": {}, "lock": threading.Lock(), "seq": 0}
+
+
+def chat_start(sid: str, message: str):
+    import agent
+    with CHAT["lock"]:
+        sess = CHAT["sessions"].setdefault(sid, {"history": None, "busy": False})
+        if sess["busy"]:
+            return None, "Agent masih menjawab pesan sebelumnya."
+        sess["busy"] = True
+        CHAT["seq"] += 1
+        jid = str(CHAT["seq"])
+        job = CHAT["jobs"][jid] = {"steps": [], "done": False, "answer": "", "error": ""}
+
+    def step(s):
+        with CHAT["lock"]:
+            job["steps"].append(s)
+
+    def work():
+        try:
+            answer, history = agent.run_agent(message, sess["history"], log=step)
+            if len(history) > 60:  # potong di awal pesan user supaya pasangan tool_call/tool utuh
+                tail = history[-40:]
+                while tail and tail[0]["role"] != "user":
+                    tail.pop(0)
+                history = [history[0]] + tail
+            sess["history"] = history
+            job["answer"] = answer
+        except Exception as e:
+            job["error"] = str(e)
+        finally:
+            job["done"] = True
+            sess["busy"] = False
+
+    threading.Thread(target=work, daemon=True).start()
+    return jid, None
+
+
+CHAT_PAGE = """<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Riset Kompetitor</title>
+<style>
+:root { --bg:#f8fafc; --panel:#fff; --line:#e2e8f0; --text:#1e293b; --muted:#64748b; --accent:#4f46e5; --me:#eef2ff; }
+@media (prefers-color-scheme: dark) { :root { --bg:#0f172a; --panel:#1e293b; --line:#334155;
+  --text:#e2e8f0; --muted:#94a3b8; --accent:#818cf8; --me:#312e81; } }
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+       background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
+header { display: flex; align-items: center; gap: 16px; padding: 12px 16px;
+         border-bottom: 1px solid var(--line); background: var(--panel); }
+header h1 { font-size: 16px; margin: 0; flex: 1; }
+header a { color: var(--muted); font-size: 13px; text-decoration: none; }
+header a:hover { color: var(--accent); }
+#msgs { flex: 1; overflow-y: auto; padding: 24px 16px; }
+.wrap { max-width: 820px; margin: 0 auto; }
+.msg { margin-bottom: 18px; line-height: 1.55; font-size: 15px; }
+.msg.me { background: var(--me); padding: 10px 14px; border-radius: 12px; margin-left: auto;
+          width: fit-content; max-width: 85%; white-space: pre-wrap; }
+.msg.bot { overflow-x: auto; }
+.msg.bot p { margin: 0 0 10px; }
+.msg.bot table { border-collapse: collapse; margin: 8px 0 12px; font-size: 13px; }
+.msg.bot th, .msg.bot td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
+.msg.bot th { background: var(--panel); }
+.msg.bot code { background: var(--panel); border: 1px solid var(--line); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+.msg.bot ul, .msg.bot ol { margin: 0 0 10px; padding-left: 22px; }
+.msg.bot h1, .msg.bot h2, .msg.bot h3 { font-size: 15px; margin: 14px 0 6px; }
+.steps { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.steps div::before { content: "› "; }
+.err { color: #dc2626; }
+.typing::after { content: "▍"; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.empty { color: var(--muted); text-align: center; margin-top: 12vh; }
+.empty b { color: var(--text); display: block; font-size: 20px; margin-bottom: 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 18px; }
+.chip { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 999px;
+        padding: 7px 12px; font-size: 13px; cursor: pointer; }
+.chip:hover { border-color: var(--accent); }
+form { border-top: 1px solid var(--line); background: var(--panel); padding: 12px 16px; }
+form .wrap { display: flex; gap: 8px; }
+textarea { flex: 1; resize: none; height: 46px; max-height: 160px; padding: 12px; font: inherit; font-size: 15px;
+           border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text); }
+button { background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: 0 18px;
+         font-size: 15px; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Riset Kompetitor</h1>
+  <a href="/competitors" target="_blank">Data kompetitor</a>
+  <a href="/report" target="_blank">Analisis IG</a>
+  <a href="/tools">Mode manual</a>
+  <a href="#" onclick="newChat();return false">Chat baru</a>
+</header>
+<div id="msgs"><div class="wrap" id="list">
+  <div class="empty" id="empty"><b>Mau riset bisnis apa?</b>
+    Tanya bebas — agent akan cari bisnis di lokasi itu, cek IG, website, dan tren Google.
+    <div class="chips">
+      <span class="chip">kompetitor coffee shop di Kemang siapa aja?</span>
+      <span class="chip">riset pasar agency di Gading Serpong</span>
+      <span class="chip">salon di Dago Bandung yang paling rame di IG</span>
+      <span class="chip">bandingin Kopi Kenangan sama Janji Jiwa</span>
+    </div>
+  </div>
+</div></div>
+<form id="form"><div class="wrap">
+  <textarea id="input" placeholder="Tulis pertanyaan… (Enter kirim, Shift+Enter baris baru)" autofocus></textarea>
+  <button id="send" type="submit">Kirim</button>
+</div></form>
+<script>
+let sid = localStorage.getItem('sid') || (Math.random().toString(36).slice(2));
+try { localStorage.setItem('sid', sid); } catch (e) {}
+const list = document.getElementById('list'), input = document.getElementById('input'),
+      send = document.getElementById('send'), box = document.getElementById('msgs');
+
+function esc(s) { return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function inline(s) {
+  return esc(s).replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\\*\\*([^*]+)\\*\\*/g, '<b>$1</b>').replace(/(^|[^*])\\*([^*\\n]+)\\*/g, '$1<i>$2</i>')
+    .replace(/\\[([^\\]]+)\\]\\((https?:[^)\\s]+)\\)/g, '<a href="$2" target="_blank">$1</a>')
+    .replace(/(^|[\\s(])@([A-Za-z0-9_.]{3,30})/g, '$1<a href="https://instagram.com/$2" target="_blank">@$2</a>');
+}
+function md(text) {
+  const lines = text.split('\\n'); let out = '', i = 0;
+  while (i < lines.length) {
+    const l = lines[i];
+    if (/^\\s*\\|.*\\|\\s*$/.test(l) && i + 1 < lines.length && /^\\s*\\|[\\s:|-]+\\|\\s*$/.test(lines[i+1])) {
+      const row = r => r.trim().replace(/^\\||\\|$/g, '').split('|').map(c => c.trim());
+      out += '<table><thead><tr>' + row(l).map(c => '<th>' + inline(c) + '</th>').join('') + '</tr></thead><tbody>';
+      i += 2;
+      while (i < lines.length && /^\\s*\\|.*\\|\\s*$/.test(lines[i])) {
+        out += '<tr>' + row(lines[i]).map(c => '<td>' + inline(c) + '</td>').join('') + '</tr>'; i++;
+      }
+      out += '</tbody></table>'; continue;
+    }
+    if (/^\\s*[-*•]\\s+/.test(l)) {
+      out += '<ul>'; while (i < lines.length && /^\\s*[-*•]\\s+/.test(lines[i]))
+        out += '<li>' + inline(lines[i++].replace(/^\\s*[-*•]\\s+/, '')) + '</li>';
+      out += '</ul>'; continue;
+    }
+    if (/^\\s*\\d+[.)]\\s+/.test(l)) {
+      out += '<ol>'; while (i < lines.length && /^\\s*\\d+[.)]\\s+/.test(lines[i]))
+        out += '<li>' + inline(lines[i++].replace(/^\\s*\\d+[.)]\\s+/, '')) + '</li>';
+      out += '</ol>'; continue;
+    }
+    const h = l.match(/^#{1,4}\\s+(.*)/);
+    if (h) { out += '<h3>' + inline(h[1]) + '</h3>'; i++; continue; }
+    if (l.trim()) out += '<p>' + inline(l) + '</p>';
+    i++;
+  }
+  return out;
+}
+const TOOL_LABEL = {search_competitors: 'Mencari bisnis di lokasi (bisa beberapa menit)…',
+  list_competitors: 'Membaca data tersimpan…', scrape_instagram: 'Scrape Instagram…',
+  google_trends: 'Cek Google Trends…'};
+function stepText(s) {
+  const m = s.match(/^🔧 (\\w+)\\((.*)\\)$/);
+  if (!m) return s;
+  let args = ''; try { args = Object.values(JSON.parse(m[2])).filter(v => typeof v !== 'boolean').join(' · '); } catch (e) {}
+  return (TOOL_LABEL[m[1]] || m[1]) + (args ? ' (' + args + ')' : '');
+}
+function add(cls, html) {
+  document.getElementById('empty')?.remove();
+  const d = document.createElement('div'); d.className = 'msg ' + cls; d.innerHTML = html;
+  list.appendChild(d); box.scrollTop = box.scrollHeight; return d;
+}
+async function ask(text) {
+  text = text.trim(); if (!text) return;
+  add('me', esc(text)); input.value = ''; send.disabled = true;
+  const bot = add('bot', '<div class="steps"></div><div class="typing"></div>');
+  const r = await fetch('/chat', {method: 'POST', body: JSON.stringify({sid, message: text})});
+  const j = await r.json();
+  if (!r.ok) { bot.innerHTML = '<span class="err">' + esc(j.error) + '</span>'; send.disabled = false; return; }
+  const poll = async () => {
+    const p = await (await fetch('/chat/poll?job=' + j.job)).json();
+    bot.querySelector('.steps').innerHTML = p.steps.map(s => '<div>' + esc(stepText(s)) + '</div>').join('');
+    if (p.done) {
+      bot.innerHTML = (p.steps.length ? '<div class="steps">' + p.steps.map(s => '<div>' + esc(stepText(s)) + '</div>').join('') + '</div>' : '')
+        + (p.error ? '<span class="err">' + esc(p.error) + '</span>' : md(p.answer));
+      send.disabled = false; input.focus();
+    } else setTimeout(poll, 1200);
+    box.scrollTop = box.scrollHeight;
+  };
+  poll();
+}
+function newChat() {
+  sid = Math.random().toString(36).slice(2);
+  try { localStorage.setItem('sid', sid); } catch (e) {}
+  location.reload();
+}
+document.getElementById('form').onsubmit = e => { e.preventDefault(); if (!send.disabled) ask(input.value); };
+input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!send.disabled) ask(input.value); } });
+document.querySelectorAll('.chip').forEach(c => c.onclick = () => ask(c.textContent));
+</script>
+</body>
+</html>"""
+
+NO_KEY_PAGE = """<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"><title>Riset Kompetitor</title>
+<style>body{font-family:-apple-system,sans-serif;max-width:560px;margin:15vh auto;padding:0 16px;color:#1e293b;line-height:1.6}
+code{background:#f1f5f9;padding:2px 6px;border-radius:4px}</style></head><body>
+<h2>Chat butuh API key OpenRouter</h2>
+<p>Isi <code>OPENROUTER_API_KEY</code> di file <code>.env</code>, lalu jalankan ulang:</p>
+<p><code>source .env &amp;&amp; python app.py</code></p>
+<p>Sementara itu pakai <a href="/tools">mode manual</a>.</p></body></html>"""
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="text/html; charset=utf-8"):
         data = body.encode("utf-8")
@@ -433,6 +647,14 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0]
         if path == "/":
+            self._send(200, CHAT_PAGE if OPENROUTER_KEY else NO_KEY_PAGE)
+        elif path == "/chat/poll":
+            jid = (self.path.split("job=", 1) + [""])[1].split("&")[0]
+            with CHAT["lock"]:
+                job = CHAT["jobs"].get(jid)
+                body = dict(job, steps=list(job["steps"])) if job else {"done": True, "error": "job tidak ada", "steps": [], "answer": ""}
+            self._send(200, json.dumps(body, ensure_ascii=False), "application/json")
+        elif path == "/tools":
             opts = "".join(f'<option value="{c}">{c}</option>' for c in CATEGORIES)
             ph = ("tanya agent: kompetitor cafe di Kemang yang paling berkembang siapa?"
                   if OPENROUTER_KEY else "cariin cafe di Kemang, Jakarta Selatan radius 2 km")
@@ -455,13 +677,24 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, "Not found")
 
     def do_POST(self):
-        if self.path not in ("/run", "/ask"):
+        if self.path not in ("/run", "/ask", "/chat"):
             return self._send(404, "Not found")
         try:
             n = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(n) or b"{}")
         except (ValueError, json.JSONDecodeError):
             return self._send(400, json.dumps({"error": "Request tidak valid."}), "application/json")
+        if self.path == "/chat":
+            msg = str(data.get("message", "")).strip()[:2000]
+            sid = re.sub(r"[^a-z0-9]", "", str(data.get("sid", "")))[:20] or "default"
+            if not msg:
+                return self._send(400, json.dumps({"error": "Pesan kosong."}), "application/json")
+            if not OPENROUTER_KEY:
+                return self._send(400, json.dumps({"error": "OPENROUTER_API_KEY belum diisi."}), "application/json")
+            jid, err = chat_start(sid, msg)
+            if err:
+                return self._send(409, json.dumps({"error": err}), "application/json")
+            return self._send(200, json.dumps({"job": jid}), "application/json")
         if self.path == "/ask":
             prompt = str(data.get("prompt", ""))[:300]
             if OPENROUTER_KEY:  # mode agent: LLM yang memutuskan tool apa yang dipanggil

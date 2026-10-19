@@ -56,7 +56,26 @@ CATEGORIES = {
     "coworking": '"amenity"="coworking_space"',
     "hotel": '"tourism"="hotel"',
     "shop": '"shop"',
+    # industri jasa / kantor (nilai list = gabungan beberapa filter OSM)
+    "agency": ['"office"="advertising_agency"', '"office"="marketing"',
+               '"office"~"company|it|media"]["name"~"agency|digital|creative|kreatif|studio|media|marketing",i'],
+    "it_software": ['"office"="it"', '"office"="telecommunication"',
+                    '"office"="company"]["name"~"software|tech|teknologi|digital|solusi|solution",i'],
+    "consulting": ['"office"="consulting"', '"office"="company"]["name"~"consult|konsultan",i'],
+    "law": ['"office"="lawyer"', '"office"="notary"'],
+    "accounting": ['"office"="accountant"', '"office"="tax_advisor"'],
+    "property": ['"office"="estate_agent"', '"office"="property_management"'],
+    "clinic": ['"amenity"="clinic"', '"healthcare"="clinic"'],
+    "dentist": ['"amenity"="dentist"', '"healthcare"="dentist"'],
+    "education": ['"amenity"="school"', '"amenity"="language_school"', '"amenity"="training"',
+                  '"office"="educational_institution"'],
+    "car_repair": ['"shop"="car_repair"', '"shop"="motorcycle_repair"'],
+    "printing": ['"shop"="copyshop"', '"craft"="printer"'],
+    "electronics": ['"shop"="electronics"', '"shop"="mobile_phone"', '"shop"="computer"'],
+    "furniture": ['"shop"="furniture"', '"shop"="interior_decoration"'],
+    "pet": ['"shop"="pet"', '"amenity"="veterinary"'],
 }
+SEARCHABLE_KEYS = ["office", "shop", "amenity", "craft", "healthcare"]
 OVERPASS_SERVERS = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
@@ -81,17 +100,27 @@ def geocode(location):
     return float(res[0]["lat"]), float(res[0]["lon"])
 
 
-def osm_filter(category):
+def osm_filters(category):
+    """Kategori -> list filter Overpass (digabung OR)."""
     if category in CATEGORIES:
-        return CATEGORIES[category]
+        f = CATEGORIES[category]
+        return f if isinstance(f, list) else [f]
+    if category.startswith("keyword:"):  # bebas: cari di nama bisnis
+        kw = re.sub(r"[^\w\s|-]", "", category.split(":", 1)[1]).strip()
+        if not kw:
+            sys.exit("keyword kosong")
+        rx = "|".join(w for w in re.split(r"\s*\|\s*", kw) if w)
+        return [f'"{k}"]["name"~"{rx}",i' for k in SEARCHABLE_KEYS]
     if "=" in category:  # custom, mis. shop=clothes
         k, v = category.split("=", 1)
-        return f'"{k.strip()}"="{v.strip()}"'
-    sys.exit(f"Kategori tidak dikenal: {category}. Pilihan: {', '.join(CATEGORIES)} atau key=value")
+        return [f'"{k.strip()}"="{v.strip()}"']
+    sys.exit(f"Kategori tidak dikenal: {category}. Pilihan: {', '.join(CATEGORIES)}, "
+             f"key=value, atau keyword:kata kunci")
 
 
 def find_businesses(lat, lon, category, radius):
-    q = f"[out:json][timeout:60];nwr[{osm_filter(category)}][name](around:{radius},{lat},{lon});out center tags;"
+    parts = "".join(f"nwr[{f}][name](around:{radius},{lat},{lon});" for f in osm_filters(category))
+    q = f"[out:json][timeout:60];({parts});out center tags;"
     elements = None
     for attempt, server in enumerate(OVERPASS_SERVERS * 2):  # server publik sering sibuk -> coba mirror
         try:

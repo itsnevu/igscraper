@@ -43,6 +43,9 @@ Jawab dalam bahasa Indonesia santai, ringkas, dan berbasis data dari tool.
   kecuali user butuh detail (frekuensi posting, jam terbaik) yang belum ada.
 - "Berkembang" = followers besar, followers_delta positif, ER tinggi, tren Google naik.
 - Akun IG bertanda instagram_source=bing adalah tebakan pencarian; sebutkan kalau relevan.
+- Data peta (search_competitors) lemah untuk industri jasa/kantor (agency, konsultan, WO, catering).
+  Untuk itu, atau kalau hasil peta < 5 bisnis, pakai find_instagram_accounts lalu scrape_instagram
+  (maks 5 akun per panggilan; scraping IG lambat, ±15 akun/jam).
 - Jangan mengarang angka. Kalau data kosong, bilang terus terang dan sarankan langkah berikutnya."""
 
 TOOLS = [
@@ -51,7 +54,10 @@ TOOLS = [
         "description": "Cari bisnis kategori tertentu di sekitar lokasi, lalu kumpulkan IG, followers, ER, "
                        "tren Google. Butuh beberapa menit. Hasil tersimpan di database.",
         "parameters": {"type": "object", "properties": {
-            "category": {"type": "string", "enum": list(CATEGORIES)},
+            "category": {"type": "string", "description":
+                         f"Salah satu: {', '.join(CATEGORIES)}. Kalau industrinya tidak ada di daftar, "
+                         "pakai 'keyword:<kata kunci di nama bisnis>', mis. 'keyword:wedding organizer|wo' "
+                         "atau 'keyword:catering'. Pisahkan sinonim dengan |."},
             "location": {"type": "string", "description": "mis. 'Kemang, Jakarta Selatan'"},
             "radius": {"type": "integer", "description": "meter, default 2000"},
             "ig_scrape": {"type": "integer", "description": "jumlah akun IG teratas yang di-scrape detail, default 3"},
@@ -73,6 +79,14 @@ TOOLS = [
             "usernames": {"type": "array", "items": {"type": "string"}},
         }, "required": ["usernames"]}}},
     {"type": "function", "function": {
+        "name": "find_instagram_accounts",
+        "description": "Cari akun IG bisnis lewat pencarian web (Bing). Pakai untuk industri yang jarang "
+                       "ada di peta (agency, konsultan, WO, catering, online shop) atau kalau "
+                       "search_competitors hasilnya sedikit. Lanjutkan dengan scrape_instagram.",
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string", "description": "mis. 'digital agency gading serpong'"},
+        }, "required": ["query"]}}},
+    {"type": "function", "function": {
         "name": "google_trends",
         "description": "Bandingkan minat pencarian Google (Indonesia) untuk maks 5 nama brand, 3 bulan terakhir.",
         "parameters": {"type": "object", "properties": {
@@ -92,8 +106,8 @@ def _run(cmd):
 
 
 def tool_search_competitors(category, location, radius=2000, ig_scrape=3):
-    if category not in CATEGORIES:
-        return {"error": f"kategori harus salah satu dari {list(CATEGORIES)}"}
+    if category not in CATEGORIES and not category.startswith("keyword:") and "=" not in category:
+        return {"error": f"kategori harus salah satu dari {list(CATEGORIES)} atau 'keyword:...'"}
     radius = min(max(int(radius or 2000), 200), 10000)
     ig_scrape = min(max(int(ig_scrape or 3), 0), 15)
     # guard: kalau lokasi+kategori ini sudah dipindai < 24 jam, pakai data yang ada
@@ -163,6 +177,18 @@ def tool_scrape_instagram(usernames):
     return {"profiles": out}
 
 
+def tool_find_instagram_accounts(query):
+    from pipeline import bing_instagram
+    found = []
+    for q in (f"{query} instagram", f"{query} site:instagram.com"):
+        try:
+            found += [u for u in bing_instagram(q) if u not in found]
+        except Exception as e:
+            return {"error": str(e), "found": found}
+    return {"query": query, "instagram_accounts": found[:15],
+            "note": "hasil pencarian web — belum tentu semuanya bisnis yang relevan; cek bio via scrape_instagram"}
+
+
 def tool_google_trends(keywords):
     from google_trends import trends
     try:
@@ -181,6 +207,7 @@ TOOL_FUNCS = {
     "list_competitors": tool_list_competitors,
     "scrape_instagram": tool_scrape_instagram,
     "google_trends": tool_google_trends,
+    "find_instagram_accounts": tool_find_instagram_accounts,
 }
 
 
