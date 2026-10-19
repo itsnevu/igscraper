@@ -697,6 +697,14 @@ td .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
 .wa { display: inline-block; background: #22c55e; color: #fff; font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 8px; white-space: nowrap; }
 .empty { text-align: center; color: var(--muted); padding: 50px 0; }
 .note { font-size: 12px; color: var(--muted); margin-top: 10px; }
+.watch { margin-left: auto; font-size: 13px; display: flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; }
+.offer { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+.offer input { flex: 1; min-width: 220px; padding: 9px 12px; font-size: 14px; }
+.draft { font-size: 12px; color: var(--muted); margin-top: 6px; max-width: 420px; line-height: 1.45; }
+.mini { background: var(--bg); color: var(--text); border: 1px solid var(--line); font-size: 12px; font-weight: 500;
+        min-height: 28px; padding: 0 9px; border-radius: 8px; margin-top: 6px; }
+.score { font-weight: 700; color: var(--accent); }
+.best td { background: var(--soft); }
 </style>
 </head>
 <body>
@@ -708,11 +716,17 @@ td .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
   <section class="hero">
     <h2>Riset pasar industri apa?</h2>
     <p>Data publik Google Maps + website bisnis. Tanpa login, gratis. ±2–4 menit.</p>
+    <div class="tabs" id="modes">
+      <button type="button" class="tab on" data-m="one">Satu wilayah</button>
+      <button type="button" class="tab" data-m="cmp">Bandingkan wilayah</button>
+    </div>
     <form class="search" id="f">
       <input id="industry" placeholder="Industri, mis. coffee shop / salon / digital agency" required>
       <input id="area" placeholder="Wilayah, mis. Kemang Jakarta" required>
       <button id="go">Riset</button>
     </form>
+    <div class="note" id="cmpnote" style="display:none">Pisahkan wilayah dengan titik koma, maks 6. Wilayah yang
+      sudah diriset &lt; 7 hari tidak diriset ulang. Contoh: Kemang Jakarta; Senopati Jakarta; Tebet Jakarta</div>
     <div class="progress" id="prog"></div>
     <div class="recent" id="recent"></div>
   </section>
@@ -751,23 +765,45 @@ function place(p) {
 function table(rows, mode) {
   if (!rows || !rows.length) return '<div class="empty" style="padding:24px">Tidak ada data di kategori ini.</div>';
   const head = mode === 'prospects'
-    ? '<tr><th>Bisnis</th><th>Rating</th><th>Review</th><th>Celah digital</th><th>Hubungi</th></tr>'
+    ? '<tr><th>Bisnis</th><th>Rating</th><th>Review</th><th>Celah digital & draf pesan</th><th>Hubungi</th></tr>'
     : '<tr><th>#</th><th>Bisnis</th><th>Rating</th><th>Review</th><th>Review/bln</th><th>Kontak</th></tr>';
   const body = rows.map((p, i) => mode === 'prospects'
     ? `<tr><td>${place(p)}</td><td class="star">★ ${p.rating ?? '–'}</td><td>${num(p.reviews)}</td>
-         <td>${(p.gaps || []).map(g => `<span class="tag">${esc(g)}</span>`).join('')}</td>
-         <td>${p.whatsapp ? `<a class="wa" href="${esc(p.whatsapp)}" target="_blank">WhatsApp</a>` : esc(p.phone || '')}</td></tr>`
+         <td>${(p.gaps || []).map(g => `<span class="tag">${esc(g)}</span>`).join('')}
+             <div class="draft">${esc(draft(p))}</div><button class="mini" data-copy="${i}">Salin pesan</button></td>
+         <td>${p.whatsapp ? `<a class="wa" href="${esc(p.whatsapp)}?text=${encodeURIComponent(draft(p))}" target="_blank">WhatsApp</a>` : esc(p.phone || '')}</td></tr>`
     : `<tr><td>${i + 1}</td><td>${place(p)}</td><td class="star">★ ${p.rating ?? '–'}</td><td>${num(p.reviews)}</td>
          <td>${p.reviews_per_month != null ? '+' + p.reviews_per_month : '–'}</td>
          <td>${p.whatsapp ? `<a class="wa" href="${esc(p.whatsapp)}" target="_blank">WA</a>` : esc(p.phone || '')}</td></tr>`).join('');
   return `<div class="tw"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
 }
+let report = null, mode = 'one';
+const OFFER_KEY = 'offer';
+function offer() {
+  try { return localStorage.getItem(OFFER_KEY) || 'meningkatkan penjualan lewat kehadiran online'; }
+  catch (e) { return 'meningkatkan penjualan lewat kehadiran online'; }
+}
+function short(name) { return name.split(/\\s[-|@·,(]\\s?/)[0].trim(); }
+function draft(p) {
+  const n = short(p.name), g = p.gaps || [];
+  const praise = p.rating >= 4.5 ? `rating ${String(p.rating).replace('.', ',')}★ dari ${p.reviews} ulasan di Google Maps — keren banget!`
+                                 : `sudah ${p.reviews} ulasan di Google Maps.`;
+  const why = g.includes('tanpa website') ? 'Saya lihat belum ada website/katalog online, padahal banyak calon pelanggan cek dulu di Google sebelum datang.'
+            : g.includes('IG tidak ditemukan') ? 'Saya belum menemukan Instagram resminya, padahal banyak pelanggan cari referensi di sana.'
+            : g.includes('review masih sedikit') ? 'Ulasannya masih bisa ditambah supaya lebih sering muncul di pencarian.'
+            : 'Masih ada ruang untuk tampil lebih menonjol dibanding pesaing sekitar.';
+  return `Halo kak, salam kenal 👋 Saya lihat ${n} punya ${praise} ${why} Kebetulan saya bantu bisnis ${report.industry} di sekitar ${report.area} untuk ${offer()}. Boleh saya kirim contoh singkatnya? Terima kasih 🙏`;
+}
 const TABS = [['leaders', 'Pemimpin pasar'], ['gems', 'Hidden gems'], ['weak', 'Ramai tapi rating rendah'],
               ['growing', 'Tumbuh tercepat'], ['all', 'Semua']];
-function render(r) {
+async function render(r) {
+  report = r;
   const s = r.summary, d = r.digital;
+  const watches = await (await fetch('/market/watches')).json();
+  const watched = watches.some(w => w.industry.toLowerCase() === r.industry.toLowerCase() && w.area.toLowerCase() === r.area.toLowerCase());
   $('#report').innerHTML = `
-    <div class="title"><h2>${esc(r.industry)} · ${esc(r.area)}</h2><span>${esc(r.created.slice(0,16).replace('T',' '))} UTC</span></div>
+    <div class="title"><h2>${esc(r.industry)} · ${esc(r.area)}</h2><span>${esc(r.created.slice(0,16).replace('T',' '))} UTC</span>
+      <label class="watch"><input type="checkbox" id="watch" ${watched ? 'checked' : ''}> Pantau mingguan (riset ulang otomatis)</label></div>
     <div class="kpis">
       <div class="kpi"><div class="l">Bisnis ditemukan</div><div class="v">${s.businesses}</div><div class="s">batas bawah</div></div>
       <div class="kpi"><div class="l">Rating rata-rata</div><div class="v">★ ${s.avg_rating ?? '–'}</div><div class="s">median ${num(s.median_reviews)} review</div></div>
@@ -780,32 +816,87 @@ function render(r) {
       <div class="card"><h3>Sebaran rating</h3>${bars(r.rating_buckets)}</div>
       <div class="card"><h3>Ukuran pemain <small>jumlah review</small></h3>${bars(r.size_buckets)}</div>
     </div>
-    <div class="card"><h3>Prospek bisnis kecil <small>bagus tapi lemah digital — siap dihubungi</small></h3>${table(r.prospects, 'prospects')}
+    <div class="card"><h3>Prospek bisnis kecil <small>bagus tapi lemah digital — siap dihubungi</small></h3>
+      <div class="offer">Penawaranmu: <input id="offer" value="${esc(offer())}" placeholder="mis. bikin website & katalog online"></div>
+      <div id="ptbl">${table(r.prospects, 'prospects')}</div>
       <div class="note">Hubungi dengan sopan dan relevan; satu pesan, jangan spam. Nomor diambil dari profil Google Maps publik.</div></div>
     <div class="card"><h3>Peta pemain</h3>
       <div class="tabs">${TABS.map(([k, l], i) => `<button class="tab ${i ? '' : 'on'}" data-k="${k}">${l} (${(r[k] || []).length})</button>`).join('')}</div>
       <div id="tbl">${table(r.leaders)}</div></div>`;
-  document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
-    document.querySelectorAll('.tab').forEach(x => x.classList.remove('on')); b.classList.add('on');
+  document.querySelectorAll('#report .tab').forEach(b => b.onclick = () => {
+    document.querySelectorAll('#report .tab').forEach(x => x.classList.remove('on')); b.classList.add('on');
     $('#tbl').innerHTML = table(r[b.dataset.k]);
   });
+  const bindCopy = () => document.querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => {
+    try { await navigator.clipboard.writeText(draft(r.prospects[+b.dataset.copy])); b.textContent = 'Tersalin ✓'; }
+    catch (e) { b.textContent = 'Gagal menyalin'; }
+  });
+  bindCopy();
+  $('#offer').oninput = e => {
+    try { localStorage.setItem(OFFER_KEY, e.target.value); } catch (x) {}
+    $('#ptbl').innerHTML = table(r.prospects, 'prospects'); bindCopy();
+  };
+  $('#watch').onchange = e => fetch('/market/watch', {method: 'POST', body: JSON.stringify(
+    {industry: r.industry, area: r.area, on: e.target.checked, last_run: r.created})});
 }
+function renderCompare(c) {
+  if (!c.areas.length) { $('#report').innerHTML = '<div class="empty">Belum ada data untuk dibandingkan.</div>'; return; }
+  const rows = c.areas.map((a, i) => `<tr class="${i ? '' : 'best'}"><td><b>${esc(a.area)}</b>
+      <div class="sub"><a href="#" data-rid="${a.report_id}">buka laporan</a></div></td>
+    <td class="score">${a.opportunity}</td><td>${a.businesses}</td><td class="star">★ ${a.avg_rating ?? '–'}</td>
+    <td>${num(a.reviews_per_business)}</td><td>${a.top3_share}%</td><td>${a.gems}</td><td>${a.weak}</td>
+    <td>${a.website_pct}%</td><td>${a.whatsapp_pct}%</td><td>${a.prospects}</td></tr>`).join('');
+  $('#report').innerHTML = `
+    <div class="title"><h2>${esc(c.industry)} · perbandingan ${c.areas.length} wilayah</h2></div>
+    <div class="card"><h3>Kesimpulan</h3><ul class="ins">${c.insights.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>
+    <div class="card"><h3>Peta peluang <small>diurutkan dari skor peluang tertinggi</small></h3>
+      <div class="grid2" style="margin-bottom:14px"><div>${bars(c.areas.map(a => [a.area, a.opportunity]))}</div>
+        <div>${bars(c.areas.map(a => [a.area, a.businesses]))}<div class="note">Jumlah pemain</div></div></div>
+      <div class="tw"><table><thead><tr><th>Wilayah</th><th>Skor peluang</th><th>Pemain</th><th>Rating</th>
+        <th>Review/bisnis</th><th>Top-3</th><th>Hidden gems</th><th>Pemain lemah</th><th>Website</th><th>WhatsApp</th><th>Prospek</th>
+      </tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  document.querySelectorAll('[data-rid]').forEach(a => a.onclick = e => { e.preventDefault(); show(a.dataset.rid); });
+}
+document.querySelectorAll('#modes .tab').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#modes .tab').forEach(x => x.classList.remove('on')); b.classList.add('on');
+  mode = b.dataset.m;
+  $('#area').placeholder = mode === 'cmp' ? 'Kemang Jakarta; Senopati Jakarta; Tebet Jakarta' : 'Wilayah, mis. Kemang Jakarta';
+  $('#cmpnote').style.display = mode === 'cmp' ? '' : 'none';
+  $('#go').textContent = mode === 'cmp' ? 'Bandingkan' : 'Riset';
+});
+let pendingCompare = null;
 $('#f').onsubmit = async e => {
   e.preventDefault();
-  const r = await fetch('/market/run', {method: 'POST', body: JSON.stringify({industry: $('#industry').value, area: $('#area').value})});
+  let r;
+  if (mode === 'cmp') {
+    const areas = $('#area').value.split(/[;\\n]/).map(s => s.trim()).filter(Boolean);
+    pendingCompare = {industry: $('#industry').value, areas};
+    r = await fetch('/market/compare/run', {method: 'POST', body: JSON.stringify(pendingCompare)});
+  } else {
+    pendingCompare = null;
+    r = await fetch('/market/run', {method: 'POST', body: JSON.stringify({industry: $('#industry').value, area: $('#area').value})});
+  }
   const j = await r.json();
   if (!r.ok) { $('#prog').textContent = j.error; return; }
   poll();
 };
 async function poll() {
   const j = await (await fetch('/log')).json();
-  const lines = (j.log || '').trim().split('\\n').filter(l => /\\[\\d\\/5\\]|Tidak ada|Error|error/.test(l));
+  const lines = (j.log || '').trim().split('\\n').filter(l => /\\[\\d\\/5\\]|\\[compare\\]|Tidak ada|Error|error/.test(l));
   $('#go').disabled = j.running;
   if (j.running) { $('#prog').textContent = '⏳ ' + (lines.pop() || 'Memulai…').replace(/^\\S+ /, ''); setTimeout(poll, 1500); }
   else if (wasRunning) {
-    const m = (j.log || '').match(/REPORT_ID=(\\d+)/);
-    $('#prog').textContent = m ? '✓ Selesai' : '✗ ' + ((j.log || '').trim().split('\\n').slice(-2).join(' ') || 'Gagal');
-    current = null; loadRecent(m && m[1]);
+    if (pendingCompare && /COMPARE_DONE/.test(j.log || '')) {
+      $('#prog').textContent = '✓ Selesai';
+      const c = await (await fetch('/market/compare?industry=' + encodeURIComponent(pendingCompare.industry) +
+                                   '&areas=' + encodeURIComponent(pendingCompare.areas.join(';')))).json();
+      renderCompare(c); loadRecent(); current = 'cmp';
+    } else {
+      const ids = [...(j.log || '').matchAll(/REPORT_ID=(\\d+)/g)];
+      const m = ids.length ? ids[ids.length - 1] : null;
+      $('#prog').textContent = m ? '✓ Selesai' : '✗ ' + ((j.log || '').trim().split('\\n').slice(-2).join(' ') || 'Gagal');
+      current = null; loadRecent(m && m[1]);
+    }
   }
   wasRunning = j.running;
 }
@@ -838,6 +929,22 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, CHAT_PAGE if OPENROUTER_KEY else NO_KEY_PAGE)
         elif path == "/market":
             self._send(200, MARKET_PAGE)
+        elif path == "/market/watches":
+            import market
+            conn = market.db()
+            try:
+                rows = [{"industry": a, "area": b, "every_days": c, "last_run": d} for a, b, c, d in
+                        conn.execute("SELECT industry, area, every_days, last_run FROM market_watches")]
+            finally:
+                conn.close()
+            self._send(200, json.dumps(rows, ensure_ascii=False), "application/json")
+        elif path == "/market/compare":
+            import market
+            from urllib.parse import parse_qs, urlparse
+            q = parse_qs(urlparse(self.path).query)
+            areas = [a for a in (q.get("areas", [""])[0]).split(";") if a.strip()]
+            res = market.compare(q.get("industry", [""])[0], areas)
+            self._send(200, json.dumps(res, ensure_ascii=False), "application/json")
         elif path == "/market/reports":
             rows = []
             if os.path.exists(os.path.join(HERE, "ig.db")):
@@ -887,13 +994,41 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, "Not found")
 
     def do_POST(self):
-        if self.path not in ("/run", "/ask", "/chat", "/market/run"):
+        if self.path not in ("/run", "/ask", "/chat", "/market/run", "/market/watch", "/market/compare/run"):
             return self._send(404, "Not found")
         try:
             n = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(n) or b"{}")
         except (ValueError, json.JSONDecodeError):
             return self._send(400, json.dumps({"error": "Request tidak valid."}), "application/json")
+        if self.path == "/market/watch":
+            import market
+            ind = str(data.get("industry", "")).strip()[:60]
+            area = str(data.get("area", "")).strip()[:80]
+            conn = market.db()
+            try:
+                if data.get("on"):
+                    conn.execute("INSERT OR IGNORE INTO market_watches (industry, area, every_days, last_run) "
+                                 "VALUES (?,?,?,?)", (ind, area, int(data.get("every_days") or 7),
+                                                      data.get("last_run")))
+                else:
+                    conn.execute("DELETE FROM market_watches WHERE lower(industry)=? AND lower(area)=?",
+                                 (ind.lower(), area.lower()))
+                conn.commit()
+            finally:
+                conn.close()
+            return self._send(200, json.dumps({"ok": True}), "application/json")
+        if self.path == "/market/compare/run":
+            industry = re.sub(r"[^\w\s&.,/-]", "", str(data.get("industry", ""))).strip()[:60]
+            areas = [re.sub(r"[^\w\s&.,/-]", "", str(a)).strip()[:80] for a in (data.get("areas") or [])]
+            areas = [a for a in areas if a][:6]
+            if not industry or len(areas) < 2:
+                return self._send(400, json.dumps({"error": "Isi industri dan minimal 2 wilayah."}), "application/json")
+            err = launch([sys.executable, "-W", "ignore", "-u", "market.py", "--industry", industry,
+                          "--areas", ";".join(areas)])
+            if err:
+                return self._send(409, json.dumps({"error": err}), "application/json")
+            return self._send(200, json.dumps({"ok": True}), "application/json")
         if self.path == "/market/run":
             industry = re.sub(r"[^\w\s&.,/-]", "", str(data.get("industry", ""))).strip()[:60]
             area = re.sub(r"[^\w\s&.,/-]", "", str(data.get("area", ""))).strip()[:80]
@@ -943,7 +1078,37 @@ class Handler(BaseHTTPRequestHandler):
         pass  # jangan penuhi terminal dengan log request
 
 
+def watch_loop():
+    """Riset ulang otomatis wilayah yang dipantau (jalan selama app.py hidup)."""
+    import time as _t
+    from datetime import datetime, timezone
+    import market
+    while True:
+        _t.sleep(60)
+        try:
+            with JOB["lock"]:
+                busy = bool(JOB["proc"] and JOB["proc"].poll() is None)
+            if busy:
+                continue
+            conn = market.db()
+            try:
+                rows = conn.execute("SELECT industry, area, every_days, last_run FROM market_watches").fetchall()
+            finally:
+                conn.close()
+            now = datetime.now(timezone.utc)
+            for ind, area, every, last in rows:
+                due = not last or (now - datetime.fromisoformat(last)).total_seconds() > (every or 7) * 86400
+                if due:
+                    print(f"[pantau] riset ulang otomatis: {ind} · {area}", flush=True)
+                    launch([sys.executable, "-W", "ignore", "-u", "market.py", "--industry", ind, "--area", area])
+                    break  # satu per putaran, supaya tidak membebani Google Maps
+        except Exception as e:
+            print(f"[pantau] error: {e}", flush=True)
+        _t.sleep(14 * 60)
+
+
 if __name__ == "__main__":
+    threading.Thread(target=watch_loop, daemon=True).start()
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"UI jalan di http://localhost:{PORT}  (Ctrl+C untuk berhenti)")
     try:

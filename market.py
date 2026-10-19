@@ -37,7 +37,79 @@ def db():
         place_id TEXT PRIMARY KEY, data TEXT, history TEXT, last_seen TEXT)""")
     conn.execute("""CREATE TABLE IF NOT EXISTS market_reports (
         id INTEGER PRIMARY KEY AUTOINCREMENT, industry TEXT, area TEXT, created TEXT, report TEXT)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS market_watches (
+        industry TEXT, area TEXT, every_days INTEGER DEFAULT 7, last_run TEXT,
+        PRIMARY KEY (industry, area))""")
     return conn
+
+
+def latest_report(conn, industry, area, max_age_days=None):
+    row = conn.execute("SELECT id, report, created FROM market_reports WHERE lower(industry)=? AND lower(area)=? "
+                       "ORDER BY id DESC LIMIT 1", (industry.lower().strip(), area.lower().strip())).fetchone()
+    if not row:
+        return None
+    if max_age_days is not None:
+        age = datetime.now(timezone.utc) - datetime.fromisoformat(row[2])
+        if age.total_seconds() > max_age_days * 86400:
+            return None
+    return row[0], json.loads(row[1])
+
+
+def compare(industry, areas):
+    """Bandingkan laporan terbaru tiap wilayah -> skor peluang."""
+    conn = db()
+    rows = []
+    try:
+        for area in areas:
+            got = latest_report(conn, industry, area)
+            if not got:
+                continue
+            rid, r = got
+            s, d = r["summary"], r["digital"]
+            n = max(s["businesses"], 1)
+            rows.append({
+                "area": area, "report_id": rid, "created": r["created"],
+                "businesses": s["businesses"], "avg_rating": s["avg_rating"],
+                "median_reviews": s["median_reviews"], "total_reviews": s["total_reviews"],
+                "reviews_per_business": round(s["total_reviews"] / n),
+                "top3_share": s["top3_share"], "gems": len(r.get("gems", [])), "weak": len(r.get("weak", [])),
+                "website_pct": d["website"], "whatsapp_pct": d["whatsapp"],
+                "prospects": len(r.get("prospects", [])), "capped": bool(s.get("capped")),
+            })
+    finally:
+        conn.close()
+    if not rows:
+        return {"industry": industry, "areas": [], "insights": ["Belum ada laporan untuk wilayah ini."]}
+
+    def norm(key, invert=False):
+        vals = [x[key] or 0 for x in rows]
+        lo, hi = min(vals), max(vals)
+        for x in rows:
+            v = ((x[key] or 0) - lo) / (hi - lo) if hi > lo else 0.5
+            x.setdefault("_parts", {})[key] = 1 - v if invert else v
+
+    # peluang = permintaan per pemain tinggi + pemain lebih sedikit + pasar tidak dikuasai + pemain lemah
+    norm("reviews_per_business"); norm("businesses", invert=True)
+    norm("top3_share", invert=True); norm("weak"); norm("avg_rating", invert=True)
+    for x in rows:
+        p = x.pop("_parts")
+        x["opportunity"] = round(100 * (0.35 * p["reviews_per_business"] + 0.25 * p["businesses"] +
+                                        0.15 * p["top3_share"] + 0.15 * p["weak"] + 0.10 * p["avg_rating"]))
+    rows.sort(key=lambda x: -x["opportunity"])
+    best, crowded = rows[0], max(rows, key=lambda x: x["businesses"])
+    insights = [f"Peluang terbesar: {best['area']} (skor {best['opportunity']}) — {best['businesses']} pemain, "
+                f"±{best['reviews_per_business']} review per bisnis."]
+    if crowded["area"] != best["area"]:
+        insights.append(f"Paling padat: {crowded['area']} dengan {crowded['businesses']} pemain.")
+    low_digital = min(rows, key=lambda x: x["website_pct"])
+    insights.append(f"Kematangan digital terendah: {low_digital['area']} ({low_digital['website_pct']}% punya "
+                    f"website) — target paling empuk untuk jasa digital.")
+    capped = [x["area"] for x in rows if x["capped"]]
+    if capped:
+        insights.append(f"Catatan: jumlah pemain di {', '.join(capped)} mentok di batas pencarian — angka sebenarnya bisa lebih banyak; riset ulang dengan --max lebih besar untuk perbandingan adil.")
+    insights.append("Skor peluang = permintaan per bisnis (35%) + sedikit pesaing (25%) + pasar tidak dikuasai "
+                    "pemain besar (15%) + banyak pemain lemah (15%) + rating rata-rata lebih rendah (10%).")
+    return {"industry": industry, "areas": rows, "insights": insights}
 
 
 def wa_link(phone: str) -> str:
@@ -241,7 +313,7 @@ def llm_insights(report):
     return None
 
 
-def run(industry, area, max_results=80, detail_limit=30):
+def run(industry, area, max_results=120, detail_limit=30):
     t0 = time.time()
     log.info(f"[1/5] Cari '{industry}' di '{area}' (Google Maps)…")
     places = gmaps.search(f"{industry} {area}", max_results=max_results)
@@ -263,12 +335,15 @@ def run(industry, area, max_results=80, detail_limit=30):
     find_instagram(places)
     log.info("[4/5] Susun laporan…")
     report = build_report(industry, area, places)
+    report["summary"]["capped"] = len(places) >= max_results  # jumlah bisnis mentok di batas
     ai = llm_insights(report)
     if ai:
         report["ai_strategy"] = ai
     save_places(conn, places)
     cur = conn.execute("INSERT INTO market_reports (industry, area, created, report) VALUES (?,?,?,?)",
                        (industry, area, report["created"], json.dumps(report, ensure_ascii=False)))
+    conn.execute("UPDATE market_watches SET last_run=? WHERE lower(industry)=? AND lower(area)=?",
+                 (report["created"], industry.lower().strip(), area.lower().strip()))
     conn.commit()
     rid = cur.lastrowid
     conn.close()
@@ -279,10 +354,32 @@ def run(industry, area, max_results=80, detail_limit=30):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--industry", required=True)
-    ap.add_argument("--area", required=True)
-    ap.add_argument("--max", type=int, default=80, help="maks bisnis dari Google Maps")
+    ap.add_argument("--area", help="satu wilayah")
+    ap.add_argument("--areas", help="beberapa wilayah dipisah ';' untuk dibandingkan")
+    ap.add_argument("--reuse-days", type=int, default=7,
+                    help="mode --areas: pakai laporan wilayah yang umurnya < N hari (tidak riset ulang)")
+    ap.add_argument("--max", type=int, default=120, help="maks bisnis dari Google Maps")
     ap.add_argument("--details", type=int, default=30, help="jumlah tempat yang diambil telepon/website-nya")
     args = ap.parse_args()
+    if args.areas:
+        areas = [a.strip() for a in args.areas.split(";") if a.strip()][:6]
+        conn = db()
+        todo = [a for a in areas if not latest_report(conn, args.industry, a, args.reuse_days)]
+        conn.close()
+        log.info(f"[compare] {len(areas)} wilayah, {len(areas) - len(todo)} pakai laporan tersimpan, "
+                 f"{len(todo)} riset baru")
+        for i, a in enumerate(todo, 1):
+            log.info(f"[compare] wilayah {i}/{len(todo)}: {a}")
+            try:
+                run(args.industry, a, args.max, args.details)
+            except SystemExit as e:
+                log.info(f"  {a}: {e}")
+        res = compare(args.industry, areas)
+        print("\n".join("• " + i for i in res["insights"]))
+        log.info("COMPARE_DONE")
+        return
+    if not args.area:
+        ap.error("butuh --area atau --areas")
     rid, rep = run(args.industry, args.area, args.max, args.details)
     print("\n".join("• " + i for i in rep["insights"]))
 
