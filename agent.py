@@ -43,7 +43,9 @@ Jawab dalam bahasa Indonesia santai, ringkas, dan berbasis data dari tool.
   kecuali user butuh detail (frekuensi posting, jam terbaik) yang belum ada.
 - "Berkembang" = followers besar, followers_delta positif, ER tinggi, tren Google naik.
 - Akun IG bertanda instagram_source=bing adalah tebakan pencarian; sebutkan kalau relevan.
-- Data peta (search_competitors) lemah untuk industri jasa/kantor (agency, konsultan, WO, catering).
+- Untuk "riset pasar", "peta persaingan", atau industri apa pun (termasuk jasa), utamakan market_research
+  (Google Maps, data paling lengkap). Sertakan link laporan di jawaban.
+- Data peta OSM (search_competitors) lemah untuk industri jasa/kantor (agency, konsultan, WO, catering).
   Untuk itu, atau kalau hasil peta < 5 bisnis, pakai find_instagram_accounts lalu scrape_instagram
   (maks 5 akun per panggilan; scraping IG lambat, ±15 akun/jam).
 - Jangan mengarang angka. Kalau data kosong, bilang terus terang dan sarankan langkah berikutnya."""
@@ -78,6 +80,17 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {
             "usernames": {"type": "array", "items": {"type": "string"}},
         }, "required": ["usernames"]}}},
+    {"type": "function", "function": {
+        "name": "market_research",
+        "description": "Riset pasar satu industri di satu wilayah dari Google Maps: jumlah bisnis, rating, "
+                       "konsentrasi pasar, pemimpin, hidden gems, pemain lemah, kematangan digital, prospek "
+                       "bisnis kecil (dengan WhatsApp). Pakai laporan < 7 hari kalau ada; butuh 2–4 menit kalau baru. "
+                       "Cocok juga untuk industri jasa (agency, WO, konsultan).",
+        "parameters": {"type": "object", "properties": {
+            "industry": {"type": "string", "description": "mis. 'coffee shop', 'digital agency', 'salon'"},
+            "area": {"type": "string", "description": "mis. 'Kemang Jakarta'"},
+            "fresh": {"type": "boolean", "description": "true = paksa riset ulang"},
+        }, "required": ["industry", "area"]}}},
     {"type": "function", "function": {
         "name": "find_instagram_accounts",
         "description": "Cari akun IG bisnis lewat pencarian web (Bing). Pakai untuk industri yang jarang "
@@ -177,6 +190,39 @@ def tool_scrape_instagram(usernames):
     return {"profiles": out}
 
 
+def tool_market_research(industry, area, fresh=False):
+    from datetime import datetime, timedelta, timezone
+    row = None
+    if os.path.exists(DB) and not fresh:
+        conn = sqlite3.connect(DB)
+        try:
+            row = conn.execute("SELECT id, report, created FROM market_reports WHERE lower(industry)=? "
+                               "AND lower(area)=? ORDER BY id DESC LIMIT 1",
+                               (industry.lower().strip(), area.lower().strip())).fetchone()
+        except sqlite3.OperationalError:
+            row = None
+        finally:
+            conn.close()
+        if row and datetime.now(timezone.utc) - datetime.fromisoformat(row[2]) > timedelta(days=7):
+            row = None
+    if not row:
+        out = _run(["market.py", "--industry", industry, "--area", area])
+        conn = sqlite3.connect(DB)
+        try:
+            row = conn.execute("SELECT id, report, created FROM market_reports ORDER BY id DESC LIMIT 1").fetchone()
+        finally:
+            conn.close()
+        if not row or f"REPORT_ID={row[0]}" not in out:
+            return {"error": out[-400:]}
+    r = json.loads(row[1])
+    slim = lambda xs, n: [{k: p.get(k) for k in ("name", "rating", "reviews", "instagram", "whatsapp", "gaps")
+                           if p.get(k)} for p in xs[:n]]
+    return {"report_url": f"http://localhost:8000/market (laporan #{row[0]})", "summary": r["summary"],
+            "insights": r["insights"], "ai_strategy": r.get("ai_strategy"), "digital": r["digital"],
+            "leaders": slim(r["leaders"], 5), "gems": slim(r["gems"], 5), "weak": slim(r["weak"], 5),
+            "prospects": slim(r["prospects"], 8)}
+
+
 def tool_find_instagram_accounts(query):
     from pipeline import bing_instagram
     found = []
@@ -208,6 +254,7 @@ TOOL_FUNCS = {
     "scrape_instagram": tool_scrape_instagram,
     "google_trends": tool_google_trends,
     "find_instagram_accounts": tool_find_instagram_accounts,
+    "market_research": tool_market_research,
 }
 
 

@@ -518,6 +518,7 @@ button:disabled { opacity: .5; cursor: default; }
 <body>
 <header>
   <h1>Riset Kompetitor</h1>
+  <a href="/market"><b>Riset pasar</b></a>
   <a href="/competitors" target="_blank">Data kompetitor</a>
   <a href="/report" target="_blank">Analisis IG</a>
   <a href="/tools">Mode manual</a>
@@ -626,13 +627,200 @@ document.querySelectorAll('.chip').forEach(c => c.onclick = () => ask(c.textCont
 </body>
 </html>"""
 
-NO_KEY_PAGE = """<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"><title>Riset Kompetitor</title>
+MARKET_PAGE = """<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Riset Pasar</title>
+<style>
+:root { --bg:#f6f7fb; --panel:#fff; --line:#e6e8ef; --text:#111827; --muted:#6b7280; --accent:#4f46e5;
+        --soft:#eef2ff; --good:#059669; --bad:#dc2626; --warn:#d97706; }
+@media (prefers-color-scheme: dark) { :root { --bg:#0b1020; --panel:#141a2e; --line:#252d47; --text:#e5e7eb;
+  --muted:#9ca3af; --accent:#818cf8; --soft:#1e2445; --good:#34d399; --bad:#f87171; --warn:#fbbf24; } }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+       background: var(--bg); color: var(--text); }
+a { color: var(--accent); text-decoration: none; }
+header { display: flex; align-items: center; gap: 18px; padding: 14px 20px; background: var(--panel);
+         border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+header h1 { font-size: 16px; margin: 0; flex: 1; }
+header a { color: var(--muted); font-size: 13px; }
+main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 60px; }
+.hero { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
+.hero h2 { margin: 0 0 4px; font-size: 22px; }
+.hero p { margin: 0 0 16px; color: var(--muted); font-size: 14px; }
+.search { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; }
+@media (max-width: 640px) { .search { grid-template-columns: 1fr; } }
+input { padding: 13px 14px; font: inherit; font-size: 15px; border: 1px solid var(--line); border-radius: 10px;
+        background: var(--bg); color: var(--text); width: 100%; }
+button { background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: 0 22px; font-size: 15px;
+         font-weight: 600; cursor: pointer; min-height: 46px; }
+button:disabled { opacity: .5; cursor: default; }
+.progress { margin-top: 12px; font-size: 13px; color: var(--muted); min-height: 18px; }
+.recent { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.pill { border: 1px solid var(--line); background: var(--bg); border-radius: 999px; padding: 6px 12px; font-size: 12px;
+        cursor: pointer; color: var(--text); }
+.pill:hover, .pill.on { border-color: var(--accent); color: var(--accent); }
+.title { margin: 30px 0 14px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.title h2 { margin: 0; font-size: 22px; }
+.title span { color: var(--muted); font-size: 13px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+.kpi .l { font-size: 12px; color: var(--muted); }
+.kpi .v { font-size: 26px; font-weight: 700; margin-top: 4px; }
+.kpi .s { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+@media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-top: 12px; }
+.grid2 .card { margin-top: 0; }
+.card h3 { margin: 0 0 12px; font-size: 15px; }
+.card h3 small { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 6px; }
+ul.ins { margin: 0; padding-left: 18px; line-height: 1.6; font-size: 14px; }
+ul.ins li { margin-bottom: 4px; }
+.ai { background: var(--soft); }
+.bar { display: grid; grid-template-columns: 110px 1fr 40px; align-items: center; gap: 10px; font-size: 13px; margin: 7px 0; }
+.bar .t { height: 10px; border-radius: 6px; background: var(--line); overflow: hidden; }
+.bar .f { height: 100%; background: var(--accent); border-radius: 6px; }
+.bar .n { text-align: right; color: var(--muted); }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.tab { background: var(--bg); color: var(--text); border: 1px solid var(--line); font-weight: 500; font-size: 13px;
+       min-height: 34px; padding: 0 12px; }
+.tab.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.tw { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.star { color: var(--warn); font-weight: 600; white-space: nowrap; }
+.tag { display: inline-block; font-size: 11px; padding: 2px 7px; border-radius: 6px; background: var(--soft); color: var(--accent); margin: 2px 4px 2px 0; }
+.wa { display: inline-block; background: #22c55e; color: #fff; font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 8px; white-space: nowrap; }
+.empty { text-align: center; color: var(--muted); padding: 50px 0; }
+.note { font-size: 12px; color: var(--muted); margin-top: 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Riset Pasar</h1>
+  <a href="/">Chat</a><a href="/competitors" target="_blank">Data kompetitor</a><a href="/tools">Mode manual</a>
+</header>
+<main>
+  <section class="hero">
+    <h2>Riset pasar industri apa?</h2>
+    <p>Data publik Google Maps + website bisnis. Tanpa login, gratis. ±2–4 menit.</p>
+    <form class="search" id="f">
+      <input id="industry" placeholder="Industri, mis. coffee shop / salon / digital agency" required>
+      <input id="area" placeholder="Wilayah, mis. Kemang Jakarta" required>
+      <button id="go">Riset</button>
+    </form>
+    <div class="progress" id="prog"></div>
+    <div class="recent" id="recent"></div>
+  </section>
+  <div id="report"><div class="empty">Belum ada laporan dipilih.</div></div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const num = n => n == null ? '–' : n >= 1e6 ? (n/1e6).toFixed(1)+'jt' : n >= 1e3 ? (n/1e3).toFixed(1)+'rb' : String(n);
+let current = null, wasRunning = false;
+
+async function loadRecent(selectId) {
+  const list = await (await fetch('/market/reports')).json();
+  $('#recent').innerHTML = list.map(r => `<span class="pill" data-id="${r.id}">${esc(r.industry)} · ${esc(r.area)}
+     <span style="opacity:.6">${esc(r.created.slice(0,10))}</span></span>`).join('');
+  document.querySelectorAll('.pill').forEach(p => p.onclick = () => show(p.dataset.id));
+  const id = selectId || (list[0] && list[0].id);
+  if (id && !current) show(id);
+}
+async function show(id) {
+  current = id;
+  document.querySelectorAll('.pill').forEach(p => p.classList.toggle('on', p.dataset.id == id));
+  const r = await (await fetch('/market/report?id=' + id)).json();
+  render(r);
+}
+function bars(rows) {
+  const mx = Math.max(1, ...rows.map(r => r[1]));
+  return rows.map(([k, v]) => `<div class="bar"><span>${esc(k)}</span><div class="t"><div class="f" style="width:${v/mx*100}%"></div></div><span class="n">${v}</span></div>`).join('');
+}
+function place(p) {
+  const links = [p.instagram ? `<a href="https://instagram.com/${esc(p.instagram)}" target="_blank">@${esc(p.instagram)}</a>` : '',
+                 p.website ? `<a href="${esc(p.website)}" target="_blank">web</a>` : '',
+                 `<a href="${esc(p.maps_url)}" target="_blank">maps</a>`].filter(Boolean).join(' · ');
+  return `<b>${esc(p.name)}</b><div class="sub">${esc(p.category || '')}${p.address ? ' · ' + esc(p.address) : ''}</div><div class="sub">${links}</div>`;
+}
+function table(rows, mode) {
+  if (!rows || !rows.length) return '<div class="empty" style="padding:24px">Tidak ada data di kategori ini.</div>';
+  const head = mode === 'prospects'
+    ? '<tr><th>Bisnis</th><th>Rating</th><th>Review</th><th>Celah digital</th><th>Hubungi</th></tr>'
+    : '<tr><th>#</th><th>Bisnis</th><th>Rating</th><th>Review</th><th>Review/bln</th><th>Kontak</th></tr>';
+  const body = rows.map((p, i) => mode === 'prospects'
+    ? `<tr><td>${place(p)}</td><td class="star">★ ${p.rating ?? '–'}</td><td>${num(p.reviews)}</td>
+         <td>${(p.gaps || []).map(g => `<span class="tag">${esc(g)}</span>`).join('')}</td>
+         <td>${p.whatsapp ? `<a class="wa" href="${esc(p.whatsapp)}" target="_blank">WhatsApp</a>` : esc(p.phone || '')}</td></tr>`
+    : `<tr><td>${i + 1}</td><td>${place(p)}</td><td class="star">★ ${p.rating ?? '–'}</td><td>${num(p.reviews)}</td>
+         <td>${p.reviews_per_month != null ? '+' + p.reviews_per_month : '–'}</td>
+         <td>${p.whatsapp ? `<a class="wa" href="${esc(p.whatsapp)}" target="_blank">WA</a>` : esc(p.phone || '')}</td></tr>`).join('');
+  return `<div class="tw"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+}
+const TABS = [['leaders', 'Pemimpin pasar'], ['gems', 'Hidden gems'], ['weak', 'Ramai tapi rating rendah'],
+              ['growing', 'Tumbuh tercepat'], ['all', 'Semua']];
+function render(r) {
+  const s = r.summary, d = r.digital;
+  $('#report').innerHTML = `
+    <div class="title"><h2>${esc(r.industry)} · ${esc(r.area)}</h2><span>${esc(r.created.slice(0,16).replace('T',' '))} UTC</span></div>
+    <div class="kpis">
+      <div class="kpi"><div class="l">Bisnis ditemukan</div><div class="v">${s.businesses}</div><div class="s">batas bawah</div></div>
+      <div class="kpi"><div class="l">Rating rata-rata</div><div class="v">★ ${s.avg_rating ?? '–'}</div><div class="s">median ${num(s.median_reviews)} review</div></div>
+      <div class="kpi"><div class="l">Penguasaan 3 teratas</div><div class="v">${s.top3_share}%</div><div class="s">${esc(s.concentration)}</div></div>
+      <div class="kpi"><div class="l">Bisa di-WhatsApp</div><div class="v">${d.whatsapp}%</div><div class="s">website ${d.website}% · IG ${d.instagram}% (n=${d.sampled})</div></div>
+    </div>
+    ${r.ai_strategy ? `<div class="card ai"><h3>Strategi <small>disusun AI dari data di bawah</small></h3><ul class="ins">${r.ai_strategy.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+    <div class="card"><h3>Temuan utama</h3><ul class="ins">${r.insights.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>
+    <div class="grid2" style="margin-top:12px">
+      <div class="card"><h3>Sebaran rating</h3>${bars(r.rating_buckets)}</div>
+      <div class="card"><h3>Ukuran pemain <small>jumlah review</small></h3>${bars(r.size_buckets)}</div>
+    </div>
+    <div class="card"><h3>Prospek bisnis kecil <small>bagus tapi lemah digital — siap dihubungi</small></h3>${table(r.prospects, 'prospects')}
+      <div class="note">Hubungi dengan sopan dan relevan; satu pesan, jangan spam. Nomor diambil dari profil Google Maps publik.</div></div>
+    <div class="card"><h3>Peta pemain</h3>
+      <div class="tabs">${TABS.map(([k, l], i) => `<button class="tab ${i ? '' : 'on'}" data-k="${k}">${l} (${(r[k] || []).length})</button>`).join('')}</div>
+      <div id="tbl">${table(r.leaders)}</div></div>`;
+  document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('on')); b.classList.add('on');
+    $('#tbl').innerHTML = table(r[b.dataset.k]);
+  });
+}
+$('#f').onsubmit = async e => {
+  e.preventDefault();
+  const r = await fetch('/market/run', {method: 'POST', body: JSON.stringify({industry: $('#industry').value, area: $('#area').value})});
+  const j = await r.json();
+  if (!r.ok) { $('#prog').textContent = j.error; return; }
+  poll();
+};
+async function poll() {
+  const j = await (await fetch('/log')).json();
+  const lines = (j.log || '').trim().split('\\n').filter(l => /\\[\\d\\/5\\]|Tidak ada|Error|error/.test(l));
+  $('#go').disabled = j.running;
+  if (j.running) { $('#prog').textContent = '⏳ ' + (lines.pop() || 'Memulai…').replace(/^\\S+ /, ''); setTimeout(poll, 1500); }
+  else if (wasRunning) {
+    const m = (j.log || '').match(/REPORT_ID=(\\d+)/);
+    $('#prog').textContent = m ? '✓ Selesai' : '✗ ' + ((j.log || '').trim().split('\\n').slice(-2).join(' ') || 'Gagal');
+    current = null; loadRecent(m && m[1]);
+  }
+  wasRunning = j.running;
+}
+loadRecent(); poll();
+</script>
+</body>
+</html>"""
+
+NO_KEY_PAGE ="""<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"><title>Riset Kompetitor</title>
 <style>body{font-family:-apple-system,sans-serif;max-width:560px;margin:15vh auto;padding:0 16px;color:#1e293b;line-height:1.6}
 code{background:#f1f5f9;padding:2px 6px;border-radius:4px}</style></head><body>
 <h2>Chat butuh API key OpenRouter</h2>
 <p>Isi <code>OPENROUTER_API_KEY</code> di file <code>.env</code>, lalu jalankan ulang:</p>
 <p><code>source .env &amp;&amp; python app.py</code></p>
-<p>Sementara itu pakai <a href="/tools">mode manual</a>.</p></body></html>"""
+<p>Sementara itu pakai <a href="/market">Riset pasar</a> (tidak butuh key) atau <a href="/tools">mode manual</a>.</p></body></html>"""
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -648,6 +836,28 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/":
             self._send(200, CHAT_PAGE if OPENROUTER_KEY else NO_KEY_PAGE)
+        elif path == "/market":
+            self._send(200, MARKET_PAGE)
+        elif path == "/market/reports":
+            rows = []
+            if os.path.exists(os.path.join(HERE, "ig.db")):
+                conn = sqlite3.connect(os.path.join(HERE, "ig.db"))
+                try:
+                    rows = [{"id": i, "industry": a, "area": b, "created": c} for i, a, b, c in conn.execute(
+                        "SELECT id, industry, area, created FROM market_reports ORDER BY id DESC LIMIT 12")]
+                except sqlite3.OperationalError:
+                    pass
+                finally:
+                    conn.close()
+            self._send(200, json.dumps(rows, ensure_ascii=False), "application/json")
+        elif path == "/market/report":
+            rid = re.sub(r"\D", "", (self.path.split("id=", 1) + [""])[1].split("&")[0])
+            conn = sqlite3.connect(os.path.join(HERE, "ig.db"))
+            try:
+                row = conn.execute("SELECT report FROM market_reports WHERE id=?", (rid or 0,)).fetchone()
+            finally:
+                conn.close()
+            self._send(200 if row else 404, row[0] if row else '{"error":"tidak ada"}', "application/json")
         elif path == "/chat/poll":
             jid = (self.path.split("job=", 1) + [""])[1].split("&")[0]
             with CHAT["lock"]:
@@ -677,13 +887,23 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, "Not found")
 
     def do_POST(self):
-        if self.path not in ("/run", "/ask", "/chat"):
+        if self.path not in ("/run", "/ask", "/chat", "/market/run"):
             return self._send(404, "Not found")
         try:
             n = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(n) or b"{}")
         except (ValueError, json.JSONDecodeError):
             return self._send(400, json.dumps({"error": "Request tidak valid."}), "application/json")
+        if self.path == "/market/run":
+            industry = re.sub(r"[^\w\s&.,/-]", "", str(data.get("industry", ""))).strip()[:60]
+            area = re.sub(r"[^\w\s&.,/-]", "", str(data.get("area", ""))).strip()[:80]
+            if not industry or not area:
+                return self._send(400, json.dumps({"error": "Isi industri dan wilayah."}), "application/json")
+            err = launch([sys.executable, "-W", "ignore", "-u", "market.py",
+                          "--industry", industry, "--area", area])
+            if err:
+                return self._send(409, json.dumps({"error": err}), "application/json")
+            return self._send(200, json.dumps({"ok": True}), "application/json")
         if self.path == "/chat":
             msg = str(data.get("message", "")).strip()[:2000]
             sid = re.sub(r"[^a-z0-9]", "", str(data.get("sid", "")))[:20] or "default"
