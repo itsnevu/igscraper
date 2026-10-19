@@ -119,6 +119,8 @@ def clean_place(p):
     for k in ("category", "address", "status", "price"):
         if k in p:
             p[k] = clean_text(p.get(k))
+    if re.match(r"^(buka|tutup|open|closed)\b", (p.get("category") or "").lower()):
+        p["category"] = ""  # status jam yang salah terbaca sebagai kategori
     if any(c in (p.get("status") or "").lower() for c in CLOSED):
         return None
     r = p.get("rating")
@@ -299,6 +301,96 @@ def clean_batch(places, area_filter=True):
     stats["chains"] = len({p["brand_group"] for p in uniq if p.get("branches_in_area", 1) > 1})
     stats["brands"] = len({p["brand_group"] for p in uniq})
     return uniq, stats
+
+
+# ------------------------------------------------------------
+# relevansi: buang bisnis yang bukan industri yang dicari
+# ------------------------------------------------------------
+
+# kata kunci kategori Google Maps (ID/EN) per industri; dipakai kalau AI tidak tersedia
+INDUSTRY_WORDS = {
+    "agency": ["agen pemasaran", "pemasaran", "marketing", "biro iklan", "periklanan", "advertising", "agensi",
+               "agency", "desain", "design", "perancang situs", "web", "media", "kreatif", "creative",
+               "branding", "humas", "public relations", "produksi video", "seo"],
+    "coffee": ["kopi", "coffee", "kafe", "cafe", "café", "kedai", "espresso", "roaster", "penyangraian"],
+    "salon": ["salon", "kecantikan", "beauty", "rambut", "hair", "barber", "cukur", "spa", "nail", "kuku"],
+    "restaurant": ["restoran", "restaurant", "rumah makan", "warung makan", "masakan", "makanan", "bistro", "kuliner"],
+    "gym": ["gym", "fitness", "kebugaran", "pusat olahraga", "yoga", "pilates", "crossfit"],
+    "laundry": ["laundry", "binatu", "dry clean", "cuci"],
+    "bakery": ["roti", "bakery", "kue", "pastry", "cake"],
+    "clinic": ["klinik", "clinic", "dokter", "medis", "kesehatan"],
+    "dentist": ["gigi", "dental", "dentist", "ortodont"],
+    "printing": ["percetakan", "cetak", "fotokopi", "print", "sablon", "digital printing"],
+    "property": ["properti", "realestat", "real estate", "agen properti", "developer perumahan"],
+    "wedding": ["pernikahan", "wedding", "event organizer", "dekorasi", "katering"],
+    "catering": ["katering", "catering", "makanan"],
+    "software": ["perangkat lunak", "software", "pengembang", "aplikasi", "it", "teknologi", "web"],
+}
+INDUSTRY_ALIASES = {
+    "agency": ["agency", "agensi", "agen digital", "creative", "kreatif", "marketing", "advertising", "branding"],
+    "coffee": ["coffee", "kopi", "cafe", "kafe", "café"],
+    "salon": ["salon", "barber", "kecantikan", "beauty"],
+    "restaurant": ["resto", "restoran", "restaurant", "rumah makan"],
+    "gym": ["gym", "fitness"],
+    "laundry": ["laundry"],
+    "bakery": ["bakery", "roti", "kue"],
+    "clinic": ["klinik", "clinic"],
+    "dentist": ["gigi", "dental", "dentist"],
+    "printing": ["percetakan", "printing", "fotokopi", "fotocopy"],
+    "property": ["properti", "property", "real estate"],
+    "wedding": ["wedding", "pernikahan", "wo"],
+    "catering": ["katering", "catering"],
+    "software": ["software", "it ", "aplikasi", "developer"],
+}
+
+
+def industry_group(industry):
+    t = " " + industry.lower() + " "
+    for g, aliases in INDUSTRY_ALIASES.items():
+        if any(a in t for a in aliases):
+            return g
+    return None
+
+
+def industry_tokens(industry):
+    stop = {"shop", "toko", "jasa", "di", "dan", "the", "&", "services", "service"}
+    stop |= {"digital", "online", "jasa", "layanan", "pusat", "center", "studio"}  # terlalu generik
+    return [w for w in re.findall(r"[a-z0-9]+", industry.lower()) if w not in stop and len(w) > 2]
+
+
+def rule_verdicts(industry, categories):
+    """{kategori: 'yes'|'no'|'maybe'} dari kata kunci."""
+    g = industry_group(industry)
+    words = INDUSTRY_WORDS.get(g, []) + industry_tokens(industry)
+    out = {}
+    for c in categories:
+        cl = (c or "").lower()
+        if not cl:
+            out[c] = "maybe"
+        elif any(w in cl for w in words):
+            out[c] = "yes"
+        else:
+            out[c] = "no" if g else "maybe"  # industri tak dikenal: jangan buang sembarangan
+    return out
+
+
+def apply_relevance(places, industry, verdicts):
+    """Return (relevan, dibuang). 'maybe' diterima hanya kalau nama mengandung kata kunci industri."""
+    g = industry_group(industry)
+    name_words = [w.strip() for w in INDUSTRY_ALIASES.get(g, [])] + industry_tokens(industry)
+    kept, dropped = [], []
+    for p in places:
+        v = verdicts.get(p.get("category") or "", "maybe")
+        nm = (p.get("name") or "").lower()
+        ok = v == "yes" or (v == "maybe" and (any(w and w in nm for w in name_words) or not p.get("category")))
+        p["relevance"] = v
+        (kept if ok else dropped).append(p)
+    # pengaman: kalau hampir semua terbuang, filternya yang salah, bukan datanya
+    if len(places) >= 10 and len(kept) < 0.25 * len(places):
+        for p in dropped:
+            p["relevance"] = "unverified"
+        return places, []
+    return kept, dropped
 
 
 # ------------------------------------------------------------

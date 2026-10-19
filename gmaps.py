@@ -51,7 +51,7 @@ def _parse_card(label: str, text: str, href: str) -> dict:
             continue
         if "·" in l and not d["category"]:
             parts = [p.strip() for p in l.split("·") if p.strip()]
-            if parts:
+            if parts and not parts[0].startswith(("Buka", "Tutup", "Open", "Closed")):  # status jam, bukan kategori
                 d["category"] = parts[0]
             for p in parts[1:]:
                 if PRICE_RE.fullmatch(p.replace(" ", " ")):

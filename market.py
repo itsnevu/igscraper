@@ -283,6 +283,64 @@ def build_report(industry, area, places):
     }
 
 
+def classify_categories(industry, places):
+    """Nilai relevansi tiap kategori Maps untuk industri ini: cache DB -> AI -> aturan."""
+    conn = db()
+    conn.execute("""CREATE TABLE IF NOT EXISTS category_relevance (
+        industry TEXT, category TEXT, verdict TEXT, source TEXT, PRIMARY KEY (industry, category))""")
+    key = industry.lower().strip()
+    cats = sorted({p.get("category") or "" for p in places} - {""})
+    verdicts = {c: v for c, v in conn.execute(
+        "SELECT category, verdict FROM category_relevance WHERE industry=?", (key,)) if c in cats}
+    todo = [c for c in cats if c not in verdicts]
+    source = "rules"
+    if todo and os.getenv("OPENROUTER_API_KEY"):
+        try:
+            import agent
+            import netutil
+            examples = {c: [p["name"] for p in places if p.get("category") == c][:3] for c in todo}
+            prompt = (f"Industri yang diriset: \"{industry}\". Untuk tiap kategori Google Maps di bawah, nilai apakah "
+                      "bisnis di kategori itu termasuk industri tersebut (pesaing langsung). Jawab JSON saja: "
+                      '{"kategori": "yes"|"no"|"maybe"}. "maybe" = kategori campuran/umum yang perlu dilihat '
+                      "dari nama bisnisnya.\n\n" + json.dumps(examples, ensure_ascii=False))
+            for model in agent.candidate_models()[:3]:
+                r = netutil.post("https://openrouter.ai/api/v1/chat/completions", retries=1, timeout=60,
+                                 headers={"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
+                                          "Content-Type": "application/json"},
+                                 json={"model": model, "temperature": 0,
+                                       "messages": [{"role": "user", "content": prompt}]})
+                j = r.json()
+                content = ((j.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+                if content:
+                    m = re.search(r"\{.*\}", content, re.S)
+                    got = json.loads(m.group(0)) if m else {}
+                    got = {c: v for c, v in got.items() if c in todo and v in ("yes", "no", "maybe")}
+                    if got:
+                        verdicts.update(got)
+                        source = "ai"
+                        break
+        except Exception as e:
+            log.info(f"      klasifikasi AI gagal, pakai aturan: {e}")
+    rest = [c for c in todo if c not in verdicts]
+    verdicts.update(datastore.rule_verdicts(industry, rest))
+    # aturan kata kunci menang kalau bilang relevan (AI kadang terlalu ketat, mis. "Kafe" untuk coffee shop)
+    ai_said = dict(verdicts)
+    for c, v in datastore.rule_verdicts(industry, todo).items():
+        if v == "yes" and ai_said.get(c) != "no":  # AI tegas "no" tetap dihormati
+            verdicts[c] = "yes"
+    # kata inti industri ada di nama kategori (mis. "kopi" di "Tempat penyangraian kopi") = pasti relevan
+    core = datastore.INDUSTRY_ALIASES.get(datastore.industry_group(industry), [])
+    for c in todo:
+        if any(w.strip() and w.strip() in c.lower() for w in core):
+            verdicts[c] = "yes"
+    for c in todo:
+        conn.execute("INSERT OR REPLACE INTO category_relevance VALUES (?,?,?,?)",
+                     (key, c, verdicts[c], source if c not in rest else "rules"))
+    conn.commit()
+    conn.close()
+    return verdicts
+
+
 def llm_insights(report):
     """Narasi strategi dari LLM (opsional, kalau OPENROUTER_API_KEY ada)."""
     if not os.getenv("OPENROUTER_API_KEY"):
@@ -306,8 +364,9 @@ def llm_insights(report):
                              json={"model": model, "temperature": 0.4,
                                    "messages": [{"role": "user", "content": prompt}]})
             j = r.json()
-            if j.get("choices"):
-                lines = [l.strip()[2:].strip() for l in j["choices"][0]["message"]["content"].splitlines()
+            content = ((j.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+            if content:
+                lines = [l.strip()[2:].strip() for l in content.splitlines()
                          if l.strip().startswith(("- ", "* ", "• "))]
                 return [l.replace(" \u2014 ", ", ").replace("\u2014", ", ") for l in lines] or None
     except Exception as e:
@@ -325,8 +384,15 @@ def run(industry, area, max_results=120, detail_limit=30):
     log.info(f"      bersihkan: {quality['raw']} mentah -> {quality['kept']} bersih "
              f"(tidak valid/tutup {quality['invalid_or_closed']}, di luar wilayah {quality['out_of_area']}, "
              f"duplikat digabung {quality['duplicates_merged']})")
+    verdicts = classify_categories(industry, places)
+    places, irrelevant = datastore.apply_relevance(places, industry, verdicts)
+    quality["irrelevant"] = len(irrelevant)
+    quality["irrelevant_examples"] = [f"{p['name']} ({p.get('category') or '-'})" for p in irrelevant[:6]]
+    quality["kept"] = len(places)
+    log.info(f"      relevansi: {len(irrelevant)} bukan '{industry}' dibuang "
+             f"({', '.join(quality['irrelevant_examples'][:3]) or '-'})")
     if not places:
-        raise SystemExit("Semua hasil tersaring (tidak valid / di luar wilayah).")
+        raise SystemExit("Semua hasil tersaring (tidak valid / di luar wilayah / tidak relevan).")
     conn = db()
     load_previous(conn, places)
     # detail: pemimpin pasar + bisnis kecil (calon prospek), yang belum pernah di-detail

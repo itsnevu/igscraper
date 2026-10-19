@@ -144,6 +144,48 @@ tr.draft td { background: var(--bg) !important; padding: 0 12px 14px; }
 .offer { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); flex-wrap: wrap; }
 .offer input { flex: 1; min-width: 220px; border: 1px solid var(--line); background: var(--bg); color: var(--text); border-radius: 8px; padding: 7px 10px; font: inherit; font-size: 13px; }
 .empty { padding: 60px 20px; text-align: center; color: var(--muted); }
+
+/* charts: palet tervalidasi (validate_palette.js, light & dark) */
+:root { --c1: #00875F; --c2: #5B6CD6; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --c1: #1FA87A; --c2: #7383E6; } }
+:root[data-theme="dark"] { --c1: #1FA87A; --c2: #7383E6; }
+.viz { display: grid; grid-template-columns: 1.15fr 1fr; gap: 12px; margin-top: 12px; }
+.viz2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+@media (max-width: 960px) { .viz, .viz2 { grid-template-columns: 1fr; } }
+.ch { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; min-width: 0; }
+.ch-h { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.ch-h h3 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.ch-h .hint { color: var(--muted); font-size: 12px; }
+.seg { margin-left: auto; display: inline-flex; background: var(--sunk); border-radius: 8px; padding: 2px; }
+.seg button { border: 0; background: transparent; color: var(--muted); font-size: 12px; padding: 5px 10px; border-radius: 6px; }
+.seg button.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+.rank { width: 100%; }
+.rk { display: grid; grid-template-columns: 22px minmax(120px, 210px) 1fr 86px; align-items: center; gap: 10px; padding: 5px 4px;
+      border-radius: 6px; cursor: pointer; text-decoration: none; }
+.rk:hover { background: var(--sunk); }
+.rk .no { color: var(--faint); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+.rk .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+.rk .tr { height: 14px; position: relative; }
+.rk .b { position: absolute; left: 0; top: 0; bottom: 0; background: var(--c1); border-radius: 0 4px 4px 0; min-width: 2px; }
+.rk .v { text-align: right; font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--text); }
+.rk .v small { color: var(--muted); display: block; font-size: 11px; }
+svg.sc { width: 100%; height: auto; display: block; overflow: visible; }
+svg.sc text { fill: var(--muted); font-size: 11px; font-family: inherit; }
+svg.sc .ql { fill: var(--faint); font-size: 11px; font-weight: 500; }
+svg.sc .grid { stroke: var(--line-2); }
+svg.sc .med { stroke: var(--line); stroke-dasharray: 4 4; }
+svg.sc circle { stroke: var(--panel); stroke-width: 2; cursor: pointer; }
+svg.sc circle:hover { stroke: var(--text); }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 6px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.hb { display: grid; grid-template-columns: minmax(90px, 160px) 1fr 40px; gap: 10px; align-items: center; font-size: 13px; margin: 7px 0; }
+.hb .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hb .tr { display: block; height: 10px; background: var(--sunk); border-radius: 0 4px 4px 0; overflow: hidden; }
+.hb .b { display: block; height: 100%; background: var(--c1); border-radius: 0 4px 4px 0; }
+.hb .v { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
+#tip { position: fixed; z-index: 50; pointer-events: none; background: var(--ink); color: var(--ink-text); border-radius: 8px;
+       padding: 8px 10px; font-size: 12px; line-height: 1.45; max-width: 260px; opacity: 0; transition: opacity .08s; }
+#tip b { font-weight: 600; }
 .cmp-best td { background: var(--accent-soft) !important; }
 .score { font-weight: 600; font-size: 15px; }
 .legal { color: var(--faint); font-size: 12px; margin-top: 10px; }
@@ -278,6 +320,19 @@ async function renderReport() {
       <div class="stat"><div class="l">Punya website</div><div class="v">${d.website}%</div><div class="s">IG ${d.instagram}%, n=${d.sampled}</div></div>
       <div class="stat"><div class="l">Bisa WhatsApp</div><div class="v">${d.whatsapp}%</div><div class="s">dari sampel detail</div></div>
     </div>
+    <div class="viz">
+      <div class="ch"><div class="ch-h"><h3>Top 10</h3>
+          <div class="seg" id="rankby"><button data-k="power" class="on">Skor kekuatan</button><button data-k="reviews">Ulasan</button><button data-k="rating">Rating</button></div></div>
+        <div class="rank" id="rank"></div>
+        <div class="legal" id="rankhint"></div></div>
+      <div class="ch"><div class="ch-h"><h3>Peta posisi</h3><span class="hint">rating vs jumlah ulasan</span></div>
+        <div id="scatter"></div>
+        <div class="legend"><span><i style="background:var(--c1)"></i>Prospek (bagus, lemah digital)</span><span><i style="background:var(--c2)"></i>Bisnis lain</span></div></div>
+    </div>
+    <div class="viz2">
+      <div class="ch"><div class="ch-h"><h3>Komposisi kategori</h3><span class="hint">jumlah bisnis</span></div><div id="cats"></div></div>
+      <div class="ch"><div class="ch-h"><h3>Kematangan digital</h3><span class="hint">dari ${d.sampled} bisnis yang dicek detail</span></div><div id="digital"></div></div>
+    </div>
     <div class="cols">
       <div>
         ${R.ai_strategy ? `<div class="card ai" style="margin-bottom:12px"><h3>Strategi</h3><ul>${R.ai_strategy.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
@@ -320,6 +375,93 @@ async function renderReport() {
   };
   $('#csv').onclick = exportCsv;
   renderRows();
+  renderCharts();
+}
+
+// ---------- charts ----------
+const tip = (() => { let t = document.getElementById('tip'); if (!t) { t = document.createElement('div'); t.id = 'tip'; document.body.appendChild(t); } return t; })();
+function showTip(e, html) { tip.innerHTML = html; tip.style.opacity = 1;
+  const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8), y = Math.min(e.clientY + 14, innerHeight - tip.offsetHeight - 8);
+  tip.style.left = x + 'px'; tip.style.top = y + 'px'; }
+const hideTip = () => tip.style.opacity = 0;
+const tipHtml = p => `<b>${esc(p.name)}</b><br>★ ${String(p.rating ?? '-').replace('.', ',')} · ${num(p.reviews)} ulasan`
+  + (p._power ? `<br>Skor kekuatan ${p._power.toFixed(2).replace('.', ',')}` : '') + (p.category ? `<br>${esc(p.category)}` : '');
+
+function powerScores(all) {
+  // rata-rata Bayesian: rating ditarik ke rata-rata pasar sampai ulasannya cukup banyak
+  const rated = all.filter(p => p.rating);
+  const C = rated.reduce((s, p) => s + p.rating, 0) / Math.max(rated.length, 1);
+  const sorted = rated.map(p => p.reviews || 0).sort((a, b) => a - b);
+  const m = Math.max(sorted[Math.floor(sorted.length / 2)] || 1, 10);
+  rated.forEach(p => { const v = p.reviews || 0; p._power = (v / (v + m)) * p.rating + (m / (v + m)) * C; });
+  return {C, m};
+}
+let rankBy = 'power';
+function renderRank() {
+  const all = (R.all || []).filter(p => p.rating);
+  const key = {power: p => p._power, reviews: p => p.reviews, rating: p => p.rating * 1e6 + p.reviews}[rankBy];
+  const top = [...all].sort((a, b) => key(b) - key(a)).slice(0, 10);
+  const val = {power: p => p._power, reviews: p => p.reviews, rating: p => p.rating}[rankBy];
+  const lo = rankBy === 'reviews' ? 0 : Math.min(...top.map(val)) - (rankBy === 'rating' ? 0.3 : 0.15);
+  const hi = Math.max(...top.map(val));
+  $('#rank').innerHTML = top.map((p, i) => {
+    const w = hi > lo ? (val(p) - lo) / (hi - lo) * 100 : 100;
+    const label = rankBy === 'reviews' ? num(p.reviews) : rankBy === 'rating' ? '★ ' + String(p.rating).replace('.', ',') : p._power.toFixed(2).replace('.', ',');
+    const sub = rankBy === 'reviews' ? '★ ' + String(p.rating).replace('.', ',') : rankBy === 'power' ? '★ ' + String(p.rating).replace('.', ',') + ' · ' + num(p.reviews) : num(p.reviews) + ' ulasan';
+    return `<a class="rk" href="${esc(p.maps_url)}" target="_blank" data-i="${i}"><span class="no">${i + 1}</span><span class="n">${esc(p.name)}</span>
+      <span class="tr"><span class="b" style="width:${Math.max(w, 1.5)}%"></span></span><span class="v">${label}<small>${sub}</small></span></a>`;
+  }).join('');
+  document.querySelectorAll('#rank .rk').forEach(a => { const p = top[+a.dataset.i];
+    a.onmousemove = e => showTip(e, tipHtml(p)); a.onmouseleave = hideTip; });
+  $('#rankhint').textContent = rankBy === 'power'
+    ? 'Skor kekuatan = rating yang disesuaikan jumlah ulasan (rata-rata Bayesian). Rating tinggi dari sedikit ulasan tidak langsung jadi juara.'
+    : rankBy === 'rating' ? 'Diurutkan dari rating; seri dipecah dengan jumlah ulasan. Sumbu tidak mulai dari nol supaya selisih terlihat.' : '';
+}
+function renderScatter() {
+  const pts = (R.all || []).filter(p => p.rating && p.reviews > 0);
+  const el = $('#scatter');
+  if (pts.length < 3) { el.innerHTML = '<div class="empty" style="padding:30px">Data belum cukup.</div>'; return; }
+  const W = 520, H = 300, L = 38, Rr = 10, T = 22, B = 30;
+  const lx = v => Math.log10(v), xs = pts.map(p => lx(p.reviews)), ys = pts.map(p => p.rating);
+  const x0 = Math.floor(Math.min(...xs)), x1 = Math.ceil(Math.max(...xs));
+  const y0 = Math.max(1, Math.floor((Math.min(...ys) - 0.1) * 10) / 10), y1 = 5.12; // ruang di atas 5,0 supaya titik tidak menempel
+  const X = v => L + (lx(v) - x0) / (x1 - x0 || 1) * (W - L - Rr), Y = v => T + (y1 - v) / (y1 - y0 || 1) * (H - T - B);
+  const med = a => { const s = [...a].sort((p, q) => p - q); return s[Math.floor(s.length / 2)]; };
+  const mx = med(pts.map(p => p.reviews)), my = med(ys);
+  let g = '';
+  for (let e = x0; e <= x1; e++) { const xv = X(10 ** e); g += `<line class="grid" x1="${xv}" x2="${xv}" y1="${T}" y2="${H - B}"/><text x="${xv}" y="${H - B + 16}" text-anchor="middle">${num(10 ** e)}</text>`; }
+  for (let r = Math.ceil(y0 * 2) / 2; r <= 5.001; r += 0.5) { const yv = Y(r); g += `<line class="grid" x1="${L}" x2="${W - Rr}" y1="${yv}" y2="${yv}"/><text x="${L - 6}" y="${yv + 4}" text-anchor="end">${r.toFixed(1).replace('.', ',')}</text>`; }
+  g += `<line class="med" x1="${X(mx)}" x2="${X(mx)}" y1="${T}" y2="${H - B}"/><line class="med" x1="${L}" x2="${W - Rr}" y1="${Y(my)}" y2="${Y(my)}"/>`;
+  g += `<text class="ql" x="${W - Rr - 4}" y="${T - 8}" text-anchor="end">Pemimpin</text><text class="ql" x="${L + 6}" y="${T - 8}">Hidden gem</text>
+        <text class="ql" x="${W - Rr - 4}" y="${H - B - 6}" text-anchor="end">Ramai tapi lemah</text><text class="ql" x="${L + 6}" y="${H - B - 6}">Tertinggal</text>`;
+  const order = [...pts].sort((a, b) => (isProspect(a) ? 1 : 0) - (isProspect(b) ? 1 : 0)); // prospek digambar paling atas
+  g += order.map((p, i) => `<circle data-i="${pts.indexOf(p)}" cx="${X(p.reviews).toFixed(1)}" cy="${Y(p.rating).toFixed(1)}" r="5" fill="var(${isProspect(p) ? '--c1' : '--c2'})"/>`).join('');
+  el.innerHTML = `<svg class="sc" viewBox="0 0 ${W} ${H}" role="img" aria-label="Sebaran rating terhadap jumlah ulasan">${g}
+    <text x="${(L + W) / 2}" y="${H - 2}" text-anchor="middle">jumlah ulasan (skala log)</text></svg>`;
+  el.querySelectorAll('circle').forEach(c => { const p = pts[+c.dataset.i];
+    c.onmousemove = e => showTip(e, tipHtml(p) + (isProspect(p) ? '<br>Prospek' : '')); c.onmouseleave = hideTip;
+    c.onclick = () => window.open(p.maps_url, '_blank'); });
+}
+function hbars(el, rows, suffix = '') {
+  const mx = Math.max(1, ...rows.map(r => r[1]));
+  el.innerHTML = rows.map(([k, v, t]) => `<div class="hb" title="${esc(t || '')}"><span class="n">${esc(k)}</span><span class="tr"><span class="b" style="width:${v / mx * 100}%"></span></span><span class="v">${v}${suffix}</span></div>`).join('');
+}
+function renderCharts() {
+  powerScores(R.all || []);
+  renderRank(); renderScatter();
+  document.querySelectorAll('#rankby button').forEach(b => b.onclick = () => {
+    rankBy = b.dataset.k; document.querySelectorAll('#rankby button').forEach(x => x.classList.toggle('on', x === b)); renderRank(); });
+  const cats = {};
+  (R.all || []).forEach(p => { const c = clean(p.category) || 'Lainnya'; cats[c] = (cats[c] || 0) + 1; });
+  const cr = Object.entries(cats).sort((a, b) => b[1] - a[1]);
+  const top = cr.slice(0, 6), rest = cr.slice(6).reduce((s, x) => s + x[1], 0);
+  if (rest) top.push(['Lainnya', rest]);
+  hbars($('#cats'), top);
+  const dd = R.digital;
+  // skala sama 0-100% untuk semua baris supaya bisa dibandingkan
+  $('#digital').innerHTML = [['Bisa WhatsApp', dd.whatsapp], ['Punya telepon', dd.phone], ['Punya website', dd.website], ['IG terdeteksi', dd.instagram]]
+    .map(([k, v]) => `<div class="hb"><span class="n">${k}</span><span class="tr"><span class="b" style="width:${v}%"></span></span><span class="v">${v}%</span></div>`).join('')
+    + `<div class="legal">Makin rendah persentasenya, makin besar peluang menawarkan jasa digital ke pasar ini.</div>`;
 }
 
 function filtered() {
