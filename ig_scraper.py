@@ -214,7 +214,7 @@ class ProxyRotator:
         if not path:
             return []
         if not os.path.exists(path):
-            log.info(f"[Proxy] {path} tidak ada — jalan tanpa proxy")
+            log.info(f"[Proxy] {path} tidak ada, jalan tanpa proxy")
             return []
         with open(path) as f:
             lines = [ln.strip() for ln in f
@@ -287,7 +287,7 @@ class IGSession:
         if creq:
             self._new_cffi_session()
         else:
-            log.warning("[Session] curl_cffi tidak ada — profil via HTML kemungkinan gagal")
+            log.warning("[Session] curl_cffi tidak ada, profil via HTML kemungkinan gagal")
             self.s = requests.Session()
             self.s.headers.update({"User-Agent": random.choice(CFG["user_agents"])})
         self.s.headers.update({"Accept-Language": "en-US,en;q=0.9"})
@@ -360,7 +360,7 @@ class IGSession:
                 if r.status_code == 429:
                     METRICS["429"] += 1
                     _GUARD_RECORD()
-                    log.warning(f"429 (attempt {attempt+1}) — sleep 60s")
+                    log.warning(f"429 (attempt {attempt+1}), sleep 60s")
                     time.sleep(60); continue
                 if r.status_code == 401:
                     # login wall: retry langsung tidak membantu, cuma bikin IP makin kotor
@@ -384,13 +384,13 @@ class IGSession:
 
     # ---------- endpoints ----------
     def profile_info(self, username):
-        # 1. halaman profil publik (JSON di <script data-sjs>) — tanpa login
+        # 1. halaman profil publik (JSON di <script data-sjs>), tanpa login
         r = self.get(f"https://www.instagram.com/{quote(username)}/")
         if r and r.status_code == 200:
             user = user_from_html(r.text)
             if user:
                 return user
-        # 2. API lama — sering 401 kalau tidak login
+        # 2. API lama, sering 401 kalau tidak login
         url = f"https://www.instagram.com/api/v1/users/web_profile_info/?username={quote(username)}"
         r = self.get(url, headers=self._api_headers())
         if r and r.status_code == 200:
@@ -401,7 +401,7 @@ class IGSession:
     FEED_DOC_ID = "9310670392322965"
 
     def user_feed(self, username, count=12, after=None):
-        """Feed post via GraphQL doc_id — jalan tanpa login (butuh csrftoken anonim)."""
+        """Feed post via GraphQL doc_id, jalan tanpa login (butuh csrftoken anonim)."""
         variables = {
             "after": after, "before": None,
             "data": {"count": count, "include_reel_media_seen_timestamp": True,
@@ -1101,7 +1101,7 @@ def scrape_one(session: IGSession, storage: Storage, username: str,
     pr.posts = posts
     pr.reels = reels
     if not posts and pr.posts_count > 0:
-        log.warning(f"[Feed] @{username} punya {pr.posts_count} post tapi feed kosong — "
+        log.warning(f"[Feed] @{username} punya {pr.posts_count} post tapi feed kosong, "
                     f"FEED_DOC_ID ({IGSession.FEED_DOC_ID}) mungkin sudah diganti IG")
 
     # enrich website

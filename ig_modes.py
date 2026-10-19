@@ -1,5 +1,5 @@
 """
-ig_modes.py — Auto-tune config berdasarkan mode.
+ig_modes.py, Auto-tune config berdasarkan mode.
 Di-import oleh ig_scraper.py; nilainya meng-override CFG di main().
 """
 
@@ -16,28 +16,28 @@ MODES = {
         "request_jitter": (8.0, 15.0),
         "max_requests_per_hour": 30,
         "max_posts_default": 12,
-        "description": "IP rumah/HP sendiri — paling aman, gratis",
+        "description": "IP rumah/HP sendiri, paling aman, gratis",
     },
     "mobile": {
         "proxy_file": None,
         "request_jitter": (5.0, 10.0),
         "max_requests_per_hour": 60,
         "max_posts_default": 20,
-        "description": "Hotspot HP — reputasi IP seluler terbaik",
+        "description": "Hotspot HP, reputasi IP seluler terbaik",
     },
     "webshare": {
         "proxy_file": "proxies_webshare.txt",
         "request_jitter": (5.0, 8.0),
         "max_requests_per_hour": 40,
         "max_posts_default": 20,
-        "description": "Webshare free tier (10 DC proxy) — untuk testing rotator",
+        "description": "Webshare free tier (10 DC proxy), untuk testing rotator",
     },
     "custom": {
         "proxy_file": "proxies.txt",
         "request_jitter": (2.5, 5.5),
         "max_requests_per_hour": 200,
         "max_posts_default": 30,
-        "description": "Proxy manual (ISP/residential berbayar) — Level 3 nanti",
+        "description": "Proxy manual (ISP/residential berbayar), Level 3 nanti",
     },
 }
 

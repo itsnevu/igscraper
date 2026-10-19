@@ -1,5 +1,5 @@
 """
-agent.py — agent riset kompetitor lokal (OpenRouter + tool calling).
+agent.py, agent riset kompetitor lokal (OpenRouter + tool calling).
 
 Agent memutuskan sendiri tool mana yang dipanggil:
   - search_competitors : jalankan pipeline (OSM -> website -> IG -> Social Blade -> Trends)
@@ -48,6 +48,7 @@ Jawab dalam bahasa Indonesia santai, ringkas, dan berbasis data dari tool.
 - Data peta OSM (search_competitors) lemah untuk industri jasa/kantor (agency, konsultan, WO, catering).
   Untuk itu, atau kalau hasil peta < 5 bisnis, pakai find_instagram_accounts lalu scrape_instagram
   (maks 5 akun per panggilan; scraping IG lambat, ±15 akun/jam).
+- Jangan pernah memakai tanda em dash (tanda em dash). Pakai koma, titik, atau titik dua.
 - Jangan mengarang angka. Kalau data kosong, bilang terus terang dan sarankan langkah berikutnya."""
 
 TOOLS = [
@@ -232,7 +233,7 @@ def tool_find_instagram_accounts(query):
         except Exception as e:
             return {"error": str(e), "found": found}
     return {"query": query, "instagram_accounts": found[:15],
-            "note": "hasil pencarian web — belum tentu semuanya bisnis yang relevan; cek bio via scrape_instagram"}
+            "note": "hasil pencarian web, belum tentu semuanya bisnis yang relevan; cek bio via scrape_instagram"}
 
 
 def tool_google_trends(keywords):
@@ -300,9 +301,14 @@ def chat(messages):
                 print(f"[agent] pakai model: {model}", flush=True)
             return j["choices"][0]["message"]
         last = (j.get("error") or {}).get("message", j)
-        print(f"[agent] {model} gagal: {str(last)[:120]} — coba model lain", flush=True)
+        print(f"[agent] {model} gagal: {str(last)[:120]}, coba model lain", flush=True)
         _models.remove(model)
     raise RuntimeError(f"Semua model gratis gagal. Terakhir: {last}")
+
+
+def no_dash(text: str) -> str:
+    """Model kadang tetap memakai em dash; ganti jadi koma."""
+    return text.replace(" \u2014 ", ", ").replace("\u2014", ", ")
 
 
 def run_agent(question, history=None, log=print):
@@ -313,7 +319,7 @@ def run_agent(question, history=None, log=print):
         messages.append({k: v for k, v in msg.items() if k in ("role", "content", "tool_calls")})
         calls = msg.get("tool_calls") or []
         if not calls:
-            return msg.get("content") or "", messages
+            return no_dash(msg.get("content") or ""), messages
         for c in calls:
             name = c["function"]["name"]
             try:

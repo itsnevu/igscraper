@@ -1,11 +1,11 @@
 """
-gmaps.py — scrape hasil pencarian Google Maps TANPA login (Playwright + browserforge).
+gmaps.py, scrape hasil pencarian Google Maps TANPA login (Playwright + browserforge).
 
 search("coffee shop kemang")  -> list bisnis: nama, rating, jumlah review, kategori,
                                   harga, alamat, koordinat, link Maps
 details(places, limit=20)     -> tambah telepon, website, jam buka (buka halaman tiap tempat)
 
-Catatan: Google sering mengubah tampilan Maps — kalau hasil kosong, selector di
+Catatan: Google sering mengubah tampilan Maps, kalau hasil kosong, selector di
 bawah perlu disesuaikan.
 """
 import logging

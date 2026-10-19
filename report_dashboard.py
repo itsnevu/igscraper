@@ -1,7 +1,7 @@
 """
 report_dashboard.py
 ===================
-Generate HTML report dari ig.db — tanpa dependency eksternal.
+Generate HTML report dari ig.db, tanpa dependency eksternal.
 
 Usage:
     python report_dashboard.py --db ig.db --out report.html
@@ -246,7 +246,7 @@ def build_growth_section(profiles: list) -> str:
         color = "#059669" if delta >= 0 else "#dc2626"
         items.append(f"""
         <details>
-          <summary>@{esc(p.get("_username", ""))} — <span style="color:{color}">
+          <summary>@{esc(p.get("_username", ""))}, <span style="color:{color}">
             {sign}{fmt_num(delta)} ({sign}{pct:.2f}%)</span>
             <span style="float:right;font-weight:400;color:#94a3b8;font-size:12px">
             {len(hist)} snapshot</span></summary>
@@ -276,7 +276,7 @@ def build_media_mix(profiles: list) -> str:
             continue
         bars.append(f"""
         <div style="margin-bottom:8px">
-          <div style="font-size:12px;color:#475569;margin-bottom:2px">{esc(k)} — {v} post ({pct:.1f}%)</div>
+          <div style="font-size:12px;color:#475569;margin-bottom:2px">{esc(k)}, {v} post ({pct:.1f}%)</div>
           <div style="background:#e2e8f0;border-radius:4px;height:8px;overflow:hidden">
             <div style="background:#4f46e5;width:{pct}%;height:100%"></div></div>
         </div>""")

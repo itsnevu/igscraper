@@ -1,5 +1,5 @@
 """
-market.py — engine riset pasar per industri x wilayah.
+market.py, engine riset pasar per industri x wilayah.
 
 Sumber: Google Maps (tanpa login) + website bisnis (cari IG) + riwayat scan sebelumnya.
 
@@ -97,16 +97,16 @@ def compare(industry, areas):
                                         0.15 * p["top3_share"] + 0.15 * p["weak"] + 0.10 * p["avg_rating"]))
     rows.sort(key=lambda x: -x["opportunity"])
     best, crowded = rows[0], max(rows, key=lambda x: x["businesses"])
-    insights = [f"Peluang terbesar: {best['area']} (skor {best['opportunity']}) — {best['businesses']} pemain, "
+    insights = [f"Peluang terbesar: {best['area']} (skor {best['opportunity']}), {best['businesses']} pemain, "
                 f"±{best['reviews_per_business']} review per bisnis."]
     if crowded["area"] != best["area"]:
         insights.append(f"Paling padat: {crowded['area']} dengan {crowded['businesses']} pemain.")
     low_digital = min(rows, key=lambda x: x["website_pct"])
     insights.append(f"Kematangan digital terendah: {low_digital['area']} ({low_digital['website_pct']}% punya "
-                    f"website) — target paling empuk untuk jasa digital.")
+                    f"website), target paling empuk untuk jasa digital.")
     capped = [x["area"] for x in rows if x["capped"]]
     if capped:
-        insights.append(f"Catatan: jumlah pemain di {', '.join(capped)} mentok di batas pencarian — angka sebenarnya bisa lebih banyak; riset ulang dengan --max lebih besar untuk perbandingan adil.")
+        insights.append(f"Catatan: jumlah pemain di {', '.join(capped)} mentok di batas pencarian, angka sebenarnya bisa lebih banyak; riset ulang dengan --max lebih besar untuk perbandingan adil.")
     insights.append("Skor peluang = permintaan per bisnis (35%) + sedikit pesaing (25%) + pasar tidak dikuasai "
                     "pemain besar (15%) + banyak pemain lemah (15%) + rating rata-rata lebih rendah (10%).")
     return {"industry": industry, "areas": rows, "insights": insights}
@@ -237,19 +237,19 @@ def build_report(industry, area, places):
 
     insights = []
     if n:
-        insights.append(f"{n} bisnis {industry} ditemukan di {area} (batas bawah — hanya yang muncul di Google Maps).")
+        insights.append(f"{n} bisnis {industry} ditemukan di {area} (batas bawah, hanya yang muncul di Google Maps).")
         insights.append(f"Pasar {conc}: 3 teratas memegang {top3}% dari seluruh review, 10 teratas {top10}%.")
         if rated:
             avg = statistics.mean(p["rating"] for p in rated)
-            insights.append(f"Rating rata-rata {avg:.2f}. Standar pasar tinggi — di bawah 4,5 sudah terlihat kalah."
-                            if avg >= 4.5 else f"Rating rata-rata {avg:.2f} — ada ruang untuk bersaing lewat kualitas layanan.")
+            insights.append(f"Rating rata-rata {avg:.2f}. Standar pasar tinggi, di bawah 4,5 sudah terlihat kalah."
+                            if avg >= 4.5 else f"Rating rata-rata {avg:.2f}, ada ruang untuk bersaing lewat kualitas layanan.")
         if size_buckets.get("<50", 0) / n > 0.4:
             insights.append(f"{pct(size_buckets['<50'], n)}% pemain masih kecil (<50 review): pasar banyak pendatang baru.")
         if weak:
             insights.append(f"{len(weak)} pemain ramai tapi rating < 4,3 (mis. {weak[0]['name']}): pelanggan mereka "
-                            f"tidak puas — peluang merebut pasar dengan kualitas.")
+                            f"tidak puas, peluang merebut pasar dengan kualitas.")
         if gems:
-            insights.append(f"{len(gems)} hidden gem (rating ≥4,7, review <300) — calon pemain yang sedang naik.")
+            insights.append(f"{len(gems)} hidden gem (rating ≥4,7, review <300), calon pemain yang sedang naik.")
         if detailed:
             insights.append(f"Kematangan digital: {digital['website']}% punya website, {digital['instagram']}% IG "
                             f"terdeteksi, {digital['whatsapp']}% bisa dihubungi via WhatsApp (dari {len(detailed)} sampel).")
@@ -307,7 +307,7 @@ def llm_insights(report):
             if j.get("choices"):
                 lines = [l.strip()[2:].strip() for l in j["choices"][0]["message"]["content"].splitlines()
                          if l.strip().startswith(("- ", "* ", "• "))]
-                return lines or None
+                return [l.replace(" \u2014 ", ", ").replace("\u2014", ", ") for l in lines] or None
     except Exception as e:
         log.info(f"LLM insight gagal: {e}")
     return None

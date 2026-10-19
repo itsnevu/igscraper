@@ -3,7 +3,7 @@
 __pycache__/
 .DS_Store
 
-# rahasia — jangan pernah di-commit
+# rahasia, jangan pernah di-commit
 .env
 proxies.txt
 proxies_webshare.txt

@@ -1,5 +1,5 @@
 """
-app.py — UI lokal sederhana untuk ig_scraper.py.
+app.py, UI lokal sederhana untuk ig_scraper.py.
 
 Jalankan:
     python app.py
@@ -100,16 +100,16 @@ input[type=text] { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-
   </details>
 
   <div class="panel">
-    <label for="targets">Atau scrape akun IG tertentu — username target (pisahkan dengan koma atau baris baru)</label>
+    <label for="targets">Atau scrape akun IG tertentu, username target (pisahkan dengan koma atau baris baru)</label>
     <textarea id="targets" placeholder="nike, adidas"></textarea>
     <div class="row">
       <div>
         <label for="mode">Mode</label>
         <select id="mode">
-          <option value="direct">direct — IP rumah (paling aman)</option>
-          <option value="mobile">mobile — hotspot HP</option>
-          <option value="webshare">webshare — proxies_webshare.txt</option>
-          <option value="custom">custom — proxies.txt</option>
+          <option value="direct">direct, IP rumah (paling aman)</option>
+          <option value="mobile">mobile, hotspot HP</option>
+          <option value="webshare">webshare, proxies_webshare.txt</option>
+          <option value="custom">custom, proxies.txt</option>
         </select>
       </div>
       <div>
@@ -383,7 +383,7 @@ def competitors_html():
         ig_cell = (f'<a href="https://instagram.com/{e(ig)}" target="_blank">@{e(ig)}</a>'
                    + (' <span title="ditemukan via pencarian Bing, cek manual" '
                       'style="color:#d97706">?</span>' if b.get("instagram_source") == "bing" else "")
-                   ) if ig else '<span style="color:#cbd5e1">—</span>'
+                   ) if ig else '<span style="color:#cbd5e1">-</span>'
         site = b.get("website") or ""
         site_cell = f'<a href="{e(site)}" target="_blank">web</a>' if site.startswith("http") else ""
         maps = f'https://www.openstreetmap.org/{e(b.get("osm_id", ""))}'
@@ -526,7 +526,7 @@ button:disabled { opacity: .5; cursor: default; }
 </header>
 <div id="msgs"><div class="wrap" id="list">
   <div class="empty" id="empty"><b>Mau riset bisnis apa?</b>
-    Tanya bebas — agent akan cari bisnis di lokasi itu, cek IG, website, dan tren Google.
+    Tanya bebas, agent akan cari bisnis di lokasi itu, cek IG, website, dan tren Google.
     <div class="chips">
       <span class="chip">kompetitor coffee shop di Kemang siapa aja?</span>
       <span class="chip">riset pasar agency di Gading Serpong</span>
@@ -828,7 +828,7 @@ function offer() {
 function short(name) { return name.split(/\\s[-|@·,(]\\s?/)[0].trim(); }
 function draft(p) {
   const n = short(p.name), g = p.gaps || [];
-  const praise = p.rating >= 4.5 ? `rating ${String(p.rating).replace('.', ',')}★ dari ${p.reviews} ulasan di Google Maps — keren banget!`
+  const praise = p.rating >= 4.5 ? `rating ${String(p.rating).replace('.', ',')}★ dari ${p.reviews} ulasan di Google Maps, keren banget!`
                                  : `sudah ${p.reviews} ulasan di Google Maps.`;
   const why = g.includes('tanpa website') ? 'Saya lihat belum ada website/katalog online, padahal banyak calon pelanggan cek dulu di Google sebelum datang.'
             : g.includes('IG tidak ditemukan') ? 'Saya belum menemukan Instagram resminya, padahal banyak pelanggan cari referensi di sana.'
@@ -859,7 +859,7 @@ async function render(r) {
       <div class="card"><h3>Sebaran rating</h3>${bars(r.rating_buckets)}</div>
       <div class="card"><h3>Ukuran pemain <small>jumlah review</small></h3>${bars(r.size_buckets)}</div>
     </div>
-    <div class="card"><h3>Prospek bisnis kecil <small>bagus tapi lemah digital — siap dihubungi</small></h3>
+    <div class="card"><h3>Prospek bisnis kecil <small>bagus tapi lemah digital, siap dihubungi</small></h3>
       <div class="offer">Penawaranmu: <input id="offer" value="${esc(offer())}" placeholder="mis. bikin website & katalog online"></div>
       <div id="ptbl">${prospectCards(r.prospects)}</div>
       <div class="note">Hubungi dengan sopan dan relevan; satu pesan, jangan spam. Nomor diambil dari profil Google Maps publik.</div></div>

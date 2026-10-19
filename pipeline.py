@@ -1,5 +1,5 @@
 """
-pipeline.py — jalankan semua scraping kompetitor lokal dalam satu perintah.
+pipeline.py, jalankan semua scraping kompetitor lokal dalam satu perintah.
 
 Alur:
   1. Lokasi -> koordinat (Nominatim / OpenStreetMap, gratis)

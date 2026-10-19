@@ -1,7 +1,7 @@
 """
 Statistik akun IG dari halaman publik Social Blade.
 
-Catatan: Social Blade sekarang pakai Next.js — data ada di JSON __NEXT_DATA__,
+Catatan: Social Blade sekarang pakai Next.js, data ada di JSON __NEXT_DATA__,
 bukan tabel HTML. Riwayat followers ('instagram.history') kosong di halaman
 publik, jadi growth tetap dicatat sendiri lewat ig.db (scrape berkala).
 

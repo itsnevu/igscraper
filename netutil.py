@@ -1,10 +1,10 @@
 """
-netutil.py — HTTP client bersama yang tahan blokir DNS ISP.
+netutil.py, HTTP client bersama yang tahan blokir DNS ISP.
 
 ISP Indonesia memblokir situs dengan membelokkan DNS ke server blokir, sehingga
 muncul error SSL ("no alternative certificate subject name", "self signed").
 Di sini nama domain di-resolve lewat DNS-over-HTTPS (Cloudflare/Google), jadi
-tidak bisa dibelokkan. Verifikasi sertifikat TETAP aktif — koneksi tetap aman.
+tidak bisa dibelokkan. Verifikasi sertifikat TETAP aktif, koneksi tetap aman.
 
 Tidak menembus blokir berbasis SNI/DPI; untuk itu perlu VPN/proxy.
 """
