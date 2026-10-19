@@ -63,6 +63,18 @@ input[type=text] { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-
   <h1>IG Scraper</h1>
 
   <div class="panel">
+    <form onsubmit="ask(event)" style="display:flex;gap:8px">
+      <input id="prompt" type="text" autofocus autocomplete="off"
+             placeholder="cariin cafe di Kemang, Jakarta Selatan radius 2 km"
+             style="flex:1;font-size:16px;padding:12px">
+      <button class="runbtn" type="submit" style="margin:0">Cari</button>
+    </form>
+    <div id="understood" class="hint">Contoh: "kompetitor salon di Dago Bandung 3 km" · "cariin kopi dekat Malioboro Jogja" · "resto di Kemang scrape 5 ig"</div>
+  </div>
+
+  <details class="panel">
+  <summary style="cursor:pointer;font-weight:600;font-size:13px;color:#475569">Mode manual (form)</summary>
+  <div style="margin-top:12px">
     <label style="font-size:15px;margin-bottom:10px">Cari kompetitor di sekitar lokasi</label>
     <div class="row" style="margin-top:0">
       <div>
@@ -85,6 +97,7 @@ input[type=text] { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-
     <button class="runbtn" onclick="runPipeline()">Cari kompetitor</button>
     <div class="hint">Data gratis dari OpenStreetMap + website + Bing + Social Blade + Google Trends. Bisa makan beberapa menit.</div>
   </div>
+  </details>
 
   <div class="panel">
     <label for="targets">Atau scrape akun IG tertentu — username target (pisahkan dengan koma atau baris baru)</label>
@@ -129,6 +142,21 @@ function showTab(btn, path) {
   currentTab = path;
   document.getElementById('report').src = path + '?' + Date.now();
 }
+async function ask(ev) {
+  ev.preventDefault();
+  const prompt = document.getElementById('prompt').value.trim();
+  if (!prompt) return;
+  const r = await fetch('/ask', {method: 'POST', body: JSON.stringify({prompt})});
+  const j = await r.json();
+  const u = document.getElementById('understood');
+  if (!r.ok) { u.innerHTML = '<span style="color:#dc2626">' + j.error + '</span>'; return; }
+  const p = j.parsed;
+  u.innerHTML = '<span style="color:#059669">Dipahami:</span> <b>' + p.category + '</b> di <b>' +
+    p.location + '</b> · radius ' + (p.radius >= 1000 ? (p.radius/1000) + ' km' : p.radius + ' m') +
+    ' · scrape IG ' + p.ig_scrape + ' akun teratas';
+  document.querySelectorAll('.tab')[0].click();
+  poll();
+}
 async function runPipeline() {
   const body = {
     job: 'pipeline',
@@ -171,6 +199,56 @@ poll();
 </script>
 </body>
 </html>"""
+
+
+# kata kunci -> kategori pipeline (dicek berurutan, frasa panjang dulu)
+CATEGORY_WORDS = [
+    ("coworking", ["coworking", "co-working", "ruang kerja"]),
+    ("fast_food", ["fast food", "fastfood", "burger", "ayam goreng", "fried chicken"]),
+    ("bakery", ["bakery", "toko roti", "roti", "toko kue", "kue", "pastry"]),
+    ("cafe", ["coffee shop", "kedai kopi", "warung kopi", "coffee", "kopi", "cafe", "kafe", "café"]),
+    ("restaurant", ["rumah makan", "warung makan", "restoran", "restaurant", "resto", "makan"]),
+    ("clothes", ["fashion", "pakaian", "baju", "butik", "boutique", "distro", "clothing"]),
+    ("salon", ["barbershop", "barber", "potong rambut", "pangkas", "salon"]),
+    ("beauty", ["skincare", "kosmetik", "kecantikan", "beauty", "klinik kecantikan"]),
+    ("gym", ["fitness", "gym", "pusat kebugaran"]),
+    ("laundry", ["laundry", "binatu", "cuci baju"]),
+    ("pharmacy", ["apotek", "apotik", "farmasi", "pharmacy"]),
+    ("hotel", ["penginapan", "hotel", "hostel", "guest house", "homestay"]),
+    ("shop", ["toko", "shop", "minimarket"]),
+]
+FILLER = r"\b(tolong|coba|dong|ya|yang|ada|semua|kompetitor|pesaing|bisnis|usaha|cari(?:in|kan)?|carikan|list|daftar|apa saja|apa aja|scrape|ig|instagram)\b"
+
+
+def parse_prompt(text: str) -> dict:
+    """'cariin cafe di Kemang radius 2 km' -> {category, location, radius, ig_scrape}"""
+    t = " " + text.lower().strip() + " "
+    out = {"radius": 2000, "ig_scrape": 3}
+
+    m = re.search(r"(?:radius|jarak|dalam)?\s*(\d+(?:[.,]\d+)?)\s*(km|kilo(?:meter)?|meter|m)\b", t)
+    if m:
+        val = float(m.group(1).replace(",", "."))
+        out["radius"] = int(val * 1000 if m.group(2).startswith("k") else val)
+        t = t.replace(m.group(0), " ")
+    m = re.search(r"(?:scrape|ig|instagram)\s*(\d+)|(\d+)\s*(?:akun|ig)", t)
+    if m:
+        out["ig_scrape"] = int(m.group(1) or m.group(2))
+        t = t.replace(m.group(0), " ")
+
+    for cat, words in CATEGORY_WORDS:
+        hit = next((w for w in words if re.search(rf"\b{re.escape(w)}\b", t)), None)
+        if hit:
+            out["category"] = cat
+            t = re.sub(rf"\b{re.escape(hit)}\b", " ", t, count=1)
+            break
+
+    m = re.search(r"\b(?:di|sekitar|dekat|daerah|area|kawasan|wilayah)\b\s+(.+)", t)
+    loc = m.group(1) if m else t
+    loc = re.sub(FILLER, " ", loc)
+    loc = re.sub(r"\b(radius|jarak|dalam|sekitar|dekat|di)\b", " ", loc)
+    loc = re.sub(r"[^\w\s,.-]", " ", loc)
+    out["location"] = re.sub(r"\s+", " ", loc).strip(" ,.-").title()
+    return out
 
 
 def pipeline_cmd(data: dict):
@@ -337,13 +415,24 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, "Not found")
 
     def do_POST(self):
-        if self.path != "/run":
+        if self.path not in ("/run", "/ask"):
             return self._send(404, "Not found")
         try:
             n = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(n) or b"{}")
         except (ValueError, json.JSONDecodeError):
             return self._send(400, json.dumps({"error": "Request tidak valid."}), "application/json")
+        if self.path == "/ask":
+            parsed = parse_prompt(str(data.get("prompt", ""))[:300])
+            if "category" not in parsed:
+                return self._send(400, json.dumps({"error": "Jenis bisnisnya apa? Contoh: cafe, resto, salon, baju, gym, laundry."}), "application/json")
+            if not parsed["location"]:
+                return self._send(400, json.dumps({"error": "Lokasinya di mana? Contoh: \"cafe di Kemang, Jakarta\"."}), "application/json")
+            data = {"job": "pipeline", **parsed}
+            err = start_job(data)
+            if err:
+                return self._send(400, json.dumps({"error": err}), "application/json")
+            return self._send(200, json.dumps({"ok": True, "parsed": parsed}), "application/json")
         err = start_job(data)
         if err:
             return self._send(400, json.dumps({"error": err}), "application/json")
