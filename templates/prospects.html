@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prospek · Raqio</title>
+<link rel="stylesheet" href="/static/base.css">
+<style>
+.wrap { max-width: 1480px; }
+.head { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; margin-bottom: 22px; }
+.head > div:first-child { flex: 1; min-width: 260px; }
+.lead { margin-bottom: 0; }
+.strip { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); background: var(--panel); margin-bottom: 14px; }
+.strip div { padding: 14px 18px; border-right: 1px solid var(--line); }
+.strip div:last-child { border-right: 0; }
+.strip small { display: block; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+.strip b { display: block; font-size: 30px; font-weight: 400; letter-spacing: -.02em; margin-top: 4px; }
+.strip .due b { color: var(--bad); }
+@media (max-width: 720px) { .strip { grid-template-columns: repeat(2, 1fr); } .strip div:nth-child(2) { border-right: 0; } .strip div:nth-child(-n+2) { border-bottom: 1px solid var(--line); } }
+.bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+.bar input, .bar select { font: inherit; font-size: 14px; color: var(--text); background: var(--panel); border: 1px solid var(--line); padding: 9px 12px; height: 40px; }
+.bar input[type=search] { flex: 1; min-width: 200px; }
+.bar label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+.offer { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; margin-bottom: 18px; flex-wrap: wrap; }
+.offer input { flex: 1; min-width: 220px; font: inherit; font-size: 14px; color: var(--text); background: var(--panel); border: 1px solid var(--line); padding: 8px 12px; }
+.board { display: grid; grid-template-columns: repeat(5, minmax(250px, 1fr)); gap: 0; border: 1px solid var(--line); overflow-x: auto; }
+.col { border-right: 1px solid var(--line); min-height: 60vh; display: flex; flex-direction: column; background: var(--bg); }
+.col:last-child { border-right: 0; }
+.col.over { background: var(--sunk); }
+.col-h { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--line);
+  font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); position: sticky; top: 0; background: inherit; }
+.col-h b { font-weight: 400; color: var(--text); }
+.col-b { padding: 10px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.col-hint { color: var(--faint); font-size: 12px; padding: 4px 4px 0; line-height: 1.5; }
+.card { background: var(--panel); border: 1px solid var(--line); padding: 12px 12px 10px; cursor: grab; }
+.card:hover { border-color: var(--faint); }
+.card.drag { opacity: .4; }
+.card .t { display: flex; gap: 8px; align-items: flex-start; }
+.card .n { flex: 1; font-size: 14.5px; line-height: 1.3; }
+.card .sc { font-size: 12px; padding: 1px 6px; background: var(--sunk); color: var(--muted); font-variant-numeric: tabular-nums; }
+.card .sc.hi { background: var(--good); color: #000; }
+.card .m { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.card .r { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.45; }
+.card .remind { display: inline-block; margin-top: 8px; font-size: 12px; border: 1px solid var(--line); padding: 2px 7px; color: var(--muted); }
+.card .remind.due { border-color: var(--bad); color: var(--bad); }
+.card .note { font-size: 12px; margin-top: 8px; color: var(--text); border-left: 2px solid var(--line); padding-left: 8px; }
+.card .a { display: flex; gap: 6px; margin-top: 10px; }
+.card .a a, .card .a button { font-size: 12px; border: 1px solid var(--line); background: transparent; color: var(--text); padding: 5px 9px; text-decoration: none; }
+.card .a .wa { border-color: var(--good); color: var(--good); }
+.card .a .next { margin-left: auto; }
+.more-btn { border: 1px dashed var(--line); background: transparent; color: var(--muted); padding: 9px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="top"></div>
+<div class="wrap">
+  <div class="head">
+    <div><h1>Prospek</h1>
+      <p class="lead">Bisnis yang paling mungkin butuh jasamu, diambil dari semua riset. Geser kartu untuk ubah status, klik untuk detail.</p></div>
+    <button class="btn ghost" id="csv">Ekspor CSV</button>
+  </div>
+  <div id="app"></div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+let ITEMS = [], F = {q: '', area: '', due: false}, SHOW = {};
+const COLS = [
+  ['baru', 'Belum dihubungi', 'Mulai dari skor tertinggi. Klik WhatsApp, lalu geser ke Dihubungi.'],
+  ['dihubungi', 'Dihubungi', 'Pasang tanggal pengingat supaya tidak lupa follow up.'],
+  ['tertarik', 'Tertarik', ''],
+  ['deal', 'Deal', ''],
+  ['tolak', 'Tidak jadi', ''],
+];
+const NEXT = {baru: 'dihubungi', dihubungi: 'tertarik', tertarik: 'deal'};
+const stOf = p => (p.lead && p.lead.status) || 'baru';
+const isDue = p => p.lead && p.lead.remind && p.lead.remind <= Shell.today() && !['deal', 'tolak'].includes(p.lead.status);
+
+async function load() {
+  const j = await (await fetch('/prospects/data')).json();
+  ITEMS = j.items;
+  render();
+}
+function filtered() {
+  return ITEMS.filter(p => (!F.area || p.industry + ' · ' + p.area === F.area) && (!F.due || isDue(p)) &&
+    (!F.q || [p.name, p.area, p.industry, p.category, p.lead && p.lead.note].join(' ').toLowerCase().includes(F.q)));
+}
+function card(p, i) {
+  const wa = Shell.waOf(p), due = isDue(p), st = stOf(p);
+  const rem = p.lead && p.lead.remind ? `<span class="remind ${due ? 'due' : ''}">${due ? 'Follow up hari ini' : 'Ingatkan ' + new Date(p.lead.remind).toLocaleDateString('id-ID', {day: 'numeric', month: 'short'})}</span>` : '';
+  return `<div class="card" draggable="true" data-i="${i}">
+    <div class="t"><div class="n">${Shell.esc(p.name)}</div><span class="sc ${p.lead_score >= 60 ? 'hi' : ''}" title="Skor prospek 0 sampai 100">${p.lead_score}</span></div>
+    <div class="m">${Shell.esc(p.industry)} · ${Shell.esc(p.area)}${p.rating ? ' · ★ ' + String(p.rating).replace('.', ',') : ''}</div>
+    <div class="r">${Shell.esc((p.lead_reasons || []).slice(0, 3).join(', '))}</div>
+    ${p.lead && p.lead.note ? `<div class="note">${Shell.esc(p.lead.note)}</div>` : ''}${rem}
+    <div class="a">${wa ? `<a class="wa" target="_blank" href="${wa}?text=${encodeURIComponent(Shell.draft(p, p.industry, p.area))}" data-wa="${i}">WhatsApp</a>` : ''}
+      ${p.instagram ? `<a target="_blank" href="https://instagram.com/${Shell.esc(p.instagram)}">IG</a>` : ''}
+      ${NEXT[st] ? `<button class="next" data-next="${i}" title="Pindah ke ${Shell.ST_LABEL[NEXT[st]]}">${Shell.ST_LABEL[NEXT[st]]} →</button>` : ''}</div>
+  </div>`;
+}
+function render() {
+  if (!ITEMS.length) {
+    $('#app').innerHTML = `<div class="empty-cta"><b>Belum ada prospek</b>Prospek muncul otomatis setelah kamu riset satu industri dan wilayah.
+      <div><a class="btn" href="/market">Mulai riset</a></div></div>`;
+    return;
+  }
+  const rows = filtered();
+  const areas = [...new Set(ITEMS.map(p => p.industry + ' · ' + p.area))];
+  const cnt = s => ITEMS.filter(p => stOf(p) === s).length;
+  const due = ITEMS.filter(isDue).length;
+  $('#app').innerHTML = `
+    <div class="strip"><div><small>Total prospek</small><b>${ITEMS.length}</b></div>
+      <div class="${due ? 'due' : ''}"><small>Follow up hari ini</small><b>${due}</b></div>
+      <div><small>Sedang berjalan</small><b>${cnt('dihubungi') + cnt('tertarik')}</b></div>
+      <div><small>Deal</small><b>${cnt('deal')}</b></div></div>
+    <div class="bar"><input type="search" id="q" placeholder="Cari nama, wilayah, catatan" value="${Shell.esc(F.q)}">
+      <select id="area"><option value="">Semua riset</option>${areas.map(a => `<option ${a === F.area ? 'selected' : ''}>${Shell.esc(a)}</option>`).join('')}</select>
+      <label><input type="checkbox" id="due" ${F.due ? 'checked' : ''}> Hanya yang jatuh tempo</label></div>
+    <div class="offer">Jasa yang kamu tawarkan (dipakai di draf pesan):<input id="offer" placeholder="mis. bikin website dan katalog online"></div>
+    <div class="board">${COLS.map(([k, l, hint]) => {
+      const list = rows.map((p, i) => [p, ITEMS.indexOf(p)]).filter(([p]) => stOf(p) === k);
+      const lim = SHOW[k] || 25;
+      return `<div class="col" data-col="${k}"><div class="col-h">${l}<b>${list.length}</b></div><div class="col-b">
+        ${list.slice(0, lim).map(([p, i]) => card(p, i)).join('') || (hint ? `<div class="col-hint">${hint}</div>` : '<div class="col-hint">Kosong</div>')}
+        ${list.length > lim ? `<button class="more-btn" data-more="${k}">Tampilkan ${list.length - lim} lagi</button>` : ''}</div></div>`;
+    }).join('')}</div>`;
+  try { $('#offer').value = localStorage.getItem('offer') || ''; } catch (e) {}
+  bind();
+}
+async function move(i, status) {
+  const p = ITEMS[i];
+  if (stOf(p) === status) return;
+  if (await Shell.saveLead(p, {status})) { Shell.toast(`${Shell.clean(p.name)} dipindah ke ${Shell.ST_LABEL[status]}`); render(); }
+}
+function bind() {
+  $('#q').oninput = e => { F.q = e.target.value.toLowerCase(); const pos = e.target.selectionStart; render(); $('#q').focus(); $('#q').setSelectionRange(pos, pos); };
+  $('#area').onchange = e => { F.area = e.target.value; render(); };
+  $('#due').onchange = e => { F.due = e.target.checked; render(); };
+  $('#offer').oninput = e => { try { localStorage.setItem('offer', e.target.value); } catch (x) {} };
+  document.querySelectorAll('[data-more]').forEach(b => b.onclick = () => { SHOW[b.dataset.more] = 1e9; render(); });
+  document.querySelectorAll('.card').forEach(c => {
+    c.onclick = e => { if (e.target.closest('a,button')) return; Shell.openBusiness(ITEMS[+c.dataset.i], {onChange: render}); };
+    c.ondragstart = e => { e.dataTransfer.setData('text/plain', c.dataset.i); c.classList.add('drag'); };
+    c.ondragend = () => c.classList.remove('drag');
+  });
+  document.querySelectorAll('[data-next]').forEach(b => b.onclick = () => move(+b.dataset.next, NEXT[stOf(ITEMS[+b.dataset.next])]));
+  // klik WhatsApp = otomatis tandai sudah dihubungi
+  document.querySelectorAll('[data-wa]').forEach(a => a.addEventListener('click', () => { const p = ITEMS[+a.dataset.wa]; if (stOf(p) === 'baru') move(+a.dataset.wa, 'dihubungi'); }));
+  document.querySelectorAll('.col').forEach(col => {
+    col.ondragover = e => { e.preventDefault(); col.classList.add('over'); };
+    col.ondragleave = () => col.classList.remove('over');
+    col.ondrop = e => { e.preventDefault(); col.classList.remove('over'); move(+e.dataTransfer.getData('text/plain'), col.dataset.col); };
+  });
+}
+$('#csv').onclick = () => {
+  const cols = [['name', 'Nama'], ['lead_score', 'Skor'], ['status', 'Status'], ['industry', 'Industri'], ['area', 'Wilayah'], ['phone', 'Telepon'],
+    ['website', 'Website'], ['instagram', 'Instagram'], ['rating', 'Rating'], ['reviews', 'Ulasan'], ['note', 'Catatan'], ['remind', 'Pengingat'], ['maps_url', 'Maps']];
+  const val = (p, c) => c === 'status' ? Shell.ST_LABEL[stOf(p)] : c === 'note' ? p.lead?.note : c === 'remind' ? p.lead?.remind : c === 'name' ? Shell.clean(p.name) : p[c];
+  const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const lines = [cols.map(c => c[1]).join(',')].concat(filtered().map(p => cols.map(([c]) => q(val(p, c))).join(',')));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + lines.join('\n')], {type: 'text/csv'}));
+  a.download = 'prospek.csv'; a.click();
+};
+load();
+</script>
+</body>
+</html>

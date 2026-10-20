@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pantau · Raqio</title>
+<link rel="stylesheet" href="/static/base.css">
+<style>
+.wrap { max-width: 1100px; }
+.lead { margin-bottom: 26px; }
+.sec-h { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 28px 0 10px; }
+.item { border: 1px solid var(--line); background: var(--panel); margin-bottom: -1px; }
+.item-h { display: flex; align-items: center; gap: 16px; padding: 18px 20px; flex-wrap: wrap; }
+.item-h .t { flex: 1; min-width: 220px; }
+.item-h .t b { display: block; font-weight: 400; font-size: 20px; letter-spacing: -.02em; }
+.item-h .t span { color: var(--muted); font-size: 13px; }
+.item-h .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.sum { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 20px 16px; }
+.sum span { border: 1px solid var(--line); padding: 4px 9px; font-size: 12.5px; color: var(--muted); }
+.sum span.up { border-color: var(--good); color: var(--good); }
+.sum span.down { border-color: var(--bad); color: var(--bad); }
+.chg { border-top: 1px solid var(--line-2); padding: 14px 20px 18px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+@media (max-width: 760px) { .chg { grid-template-columns: 1fr; } }
+.chg h4 { margin: 0 0 8px; font-size: 12px; font-weight: 400; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.chg li { font-size: 14px; margin: 5px 0; list-style: none; display: flex; gap: 8px; }
+.chg ul { margin: 0; padding: 0; }
+.chg li a { color: var(--text); text-decoration: none; flex: 1; }
+.chg li a:hover { text-decoration: underline; }
+.chg li em { font-style: normal; color: var(--muted); font-variant-numeric: tabular-nums; }
+.chg li em.up { color: var(--good); } .chg li em.down { color: var(--bad); }
+.wait { padding: 0 20px 18px; color: var(--muted); font-size: 13px; }
+.watch.on { border-color: var(--good) !important; color: var(--good) !important; }
+</style>
+</head>
+<body>
+<div class="top"></div>
+<div class="wrap">
+  <h1>Pantau</h1>
+  <p class="lead">Wilayah yang dipantau diriset ulang otomatis selama aplikasi ini menyala. Di sini terlihat apa yang berubah: pesaing baru, rating naik atau turun, dan bisnis yang sedang ramai.</p>
+  <div id="app"></div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const E = s => Shell.esc(s);
+const fmt = d => new Date(d).toLocaleDateString('id-ID', {day: 'numeric', month: 'short', year: 'numeric'});
+let DATA = [];
+async function load() { DATA = await (await fetch('/watch/data')).json(); render(); }
+function list(title, rows, show, cls) {
+  if (!rows.length) return '';
+  return `<div><h4>${title} (${rows.length})</h4><ul>${rows.slice(0, 6).map(p => `<li><a target="_blank" href="${E(p.maps_url || '#')}">${E(p.name)}</a>${show(p, cls)}</li>`).join('')}</ul></div>`;
+}
+function item(x) {
+  const c = x.changes, w = x.watch;
+  const next = w ? new Date(new Date(w.last_run || x.created).getTime() + (w.every_days || 7) * 864e5) : null;
+  let sum = '', body = '';
+  if (c) {
+    const tot = Object.values(c).reduce((a, v) => a + v.length, 0);
+    sum = `<div class="sum">${tot ? [
+      c.new.length ? `<span class="down">${c.new.length} pesaing baru</span>` : '',
+      c.rating_down.length ? `<span class="up">${c.rating_down.length} rating turun</span>` : '',
+      c.rating_up.length ? `<span>${c.rating_up.length} rating naik</span>` : '',
+      c.reviews_jump.length ? `<span>${c.reviews_jump.length} makin ramai</span>` : '',
+      c.gone.length ? `<span>${c.gone.length} hilang dari Maps</span>` : ''].join('')
+      : '<span>Tidak ada perubahan berarti</span>'} <span>dibanding ${fmt(x.prev_created)}</span></div>`;
+    if (tot) body = `<div class="chg">
+      ${list('Pesaing baru', c.new, p => `<em>${p.reviews} ulasan</em>`)}
+      ${list('Rating turun (peluang)', c.rating_down, p => `<em class="down">${String(p.delta).replace('.', ',')}</em>`)}
+      ${list('Rating naik', c.rating_up, p => `<em class="up">+${String(p.delta).replace('.', ',')}</em>`)}
+      ${list('Makin ramai', c.reviews_jump, p => `<em class="up">+${p.delta} ulasan</em>`)}
+      ${list('Hilang dari Maps', c.gone, () => '')}</div>`;
+  } else {
+    body = `<div class="wait">Perubahan akan terlihat setelah wilayah ini diriset lagi${next ? ', terjadwal ' + fmt(next) : '. Aktifkan pantau mingguan atau riset ulang sekarang'}.</div>`;
+  }
+  return `<div class="item"><div class="item-h"><div class="t"><b>${E(x.industry)} · ${E(x.area)}</b>
+      <span>${x.businesses} bisnis · riset terakhir ${fmt(x.created)}${next ? ' · berikutnya ' + fmt(next) : ''}</span></div>
+    <div class="acts"><a class="btn ghost" href="/market?id=${x.report_id}">Buka laporan</a>
+      <button class="btn ghost" data-run="${DATA.indexOf(x)}">Riset ulang</button>
+      <button class="btn ghost watch ${w ? 'on' : ''}" data-w="${DATA.indexOf(x)}">${w ? '✓ Dipantau' : '+ Pantau mingguan'}</button></div></div>
+    ${sum}${body}</div>`;
+}
+function render() {
+  if (!DATA.length) {
+    $('#app').innerHTML = `<div class="empty-cta"><b>Belum ada yang dipantau</b>Riset satu industri dan wilayah dulu, lalu klik "Pantau mingguan".
+      <div><a class="btn" href="/market">Mulai riset</a></div></div>`;
+    return;
+  }
+  const on = DATA.filter(x => x.watch), off = DATA.filter(x => !x.watch);
+  $('#app').innerHTML = (on.length ? `<div class="sec-h">Dipantau (${on.length})</div>` + on.map(item).join('') : '') +
+    (off.length ? `<div class="sec-h">Riset lain (${off.length})</div>` + off.map(item).join('') : '');
+  document.querySelectorAll('[data-w]').forEach(b => b.onclick = async () => {
+    const x = DATA[+b.dataset.w];
+    await fetch('/market/watch', {method: 'POST', body: JSON.stringify({industry: x.industry, area: x.area, on: !x.watch, last_run: x.created})});
+    Shell.toast(x.watch ? 'Pantauan dimatikan' : 'Dipantau tiap 7 hari');
+    load();
+  });
+  document.querySelectorAll('[data-run]').forEach(b => b.onclick = async () => {
+    const x = DATA[+b.dataset.run];
+    const r = await fetch('/market/run', {method: 'POST', body: JSON.stringify({industry: x.industry, area: x.area})});
+    if (!r.ok) { Shell.toast((await r.json()).error); return; }
+    location.href = '/market';
+  });
+}
+load();
+</script>
+</body>
+</html>

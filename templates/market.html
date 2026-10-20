@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Riset Pasar</title>
+<title>Riset · Raqio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -188,13 +188,25 @@ svg.sc circle:hover { stroke: var(--text); }
 #tip b { font-weight: 600; }
 .cmp-best td { background: var(--accent-soft) !important; }
 .score { font-weight: 600; font-size: 15px; }
+.ls { display: inline-block; min-width: 30px; text-align: center; font-size: 12px; font-weight: 600; border-radius: 6px; padding: 1px 6px;
+      font-variant-numeric: tabular-nums; background: var(--sunk); color: var(--muted); }
+.ls.hi { background: var(--accent-soft); color: var(--accent); }
+.lrow { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.lrow select { font: inherit; font-size: 12px; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+.lrow select.set { border-color: var(--accent); }
 .legal { color: var(--faint); font-size: 12px; margin-top: 10px; }
+.nm-btn { border: 0; background: none; padding: 0; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.nm-btn:hover { text-decoration: underline; text-underline-offset: 3px; }
+.chk { border: 1px dashed var(--line); background: transparent; color: var(--muted); padding: 2px 8px; font-size: 12px; }
+.chk:hover { color: var(--text); border-color: var(--faint); }
+.pros-hint { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+.pros-hint a { color: var(--text); }
+.status .prog { flex: 1; margin-top: 0; }
+.status:has(.prog) { display: block; }
 </style>
 </head>
 <body>
 <div class="top">
-  <div class="brand"><i></i>Riset Pasar</div>
-  <nav><a href="/">Chat</a><a href="/market" class="on">Riset pasar</a><a href="/competitors" target="_blank">Kompetitor IG</a><a href="/tools">Manual</a></nav>
 </div>
 
 <div class="wrap">
@@ -255,9 +267,16 @@ function gapsOf(p) {
 const isGem = p => p.rating >= 4.7 && p.reviews >= 15 && p.reviews < 300;
 const isWeak = p => p.rating && p.rating < 4.3 && p.reviews >= 150;
 const isProspect = p => { const g = gapsOf(p); return g && g.length && p.reviews <= 800 && (waOf(p) || p.instagram); };
+const LEAD_ST = ['baru', 'dihubungi', 'tertarik', 'deal', 'tolak'];
+const leadKey = p => p.place_id || p.maps_url || '';
+async function setLead(p, status) {
+  const r = await fetch('/market/lead', {method: 'POST', body: JSON.stringify({key: leadKey(p), name: clean(p.name), status})});
+  if (r.ok) p.lead = {status, updated: new Date().toISOString()};
+}
 const FILTERS = [
   ['all', 'Semua', p => true],
   ['prospect', 'Prospek', isProspect],
+  ['followup', 'Follow up', p => !!p.lead && !['deal', 'tolak'].includes(p.lead.status)],
   ['wa', 'Bisa WhatsApp', p => !!waOf(p)],
   ['web', 'Punya website', p => !!p.website],
   ['noweb', 'Tanpa website', p => p._detailed && !p.website],
@@ -298,6 +317,33 @@ async function show(id) {
 }
 
 // ---------- report ----------
+function keyPoints(all) {
+  const s = R.summary, d = R.digital, n = s.businesses, pros = all.filter(isProspect).length;
+  const crowd = s.top3_share >= 50 ? `Dikuasai segelintir pemain besar: 3 teratas memegang ${s.top3_share}% dari semua ulasan. Pendatang baru perlu pembeda yang jelas.`
+    : s.top3_share >= 30 ? `Ada beberapa pemain kuat (3 teratas memegang ${s.top3_share}% ulasan), tapi masih ada ruang untuk tumbuh.`
+    : `Persaingan merata, belum ada yang dominan. 3 teratas hanya memegang ${s.top3_share}% ulasan.`;
+  const avg = s.avg_rating;
+  const qual = avg == null ? 'Belum cukup data rating.'
+    : avg >= 4.5 ? `Pelanggan di sini terbiasa dengan kualitas tinggi (rata-rata ${String(avg).replace('.', ',')}). Rating di bawah 4,5 sudah terlihat kalah.`
+    : `Rata-rata rating ${String(avg).replace('.', ',')}. Masih bisa menang dengan layanan yang lebih baik.`;
+  const opp = d.sampled ? `${100 - d.website}% bisnis yang dicek belum punya website dan ${100 - d.instagram}% belum terlihat aktif di IG. ${pros} bisnis cocok jadi prospek.`
+    : `${pros} bisnis cocok jadi prospek.`;
+  return [[`${n}${s.capped ? '+' : ''} bisnis. Seberapa padat?`, crowd], ['Standar kualitas', qual], ['Peluang untukmu', opp]];
+}
+function showTab(t) {
+  document.querySelectorAll('#rtabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  document.querySelectorAll('#report section[data-tab]').forEach(x => x.style.display = x.dataset.tab === t ? '' : 'none');
+  const tc = document.querySelector('#report .tcard');
+  if (tc) tc.style.display = t === 'sum' ? 'none' : '';
+  if (t === 'pros') { view.filter = 'prospect'; view.sort = 'lead'; view.dir = -1; }
+  else if (t === 'players' && view.filter === 'prospect') { view.filter = 'all'; view.sort = 'reviews'; view.dir = -1; }
+  document.querySelectorAll('#filters .f').forEach(x => x.classList.toggle('on', x.dataset.f === view.filter));
+  const tools = document.querySelector('#report .tools');
+  if (tools) tools.style.display = t === 'pros' ? 'none' : '';
+  $('#proshint').style.display = t === 'pros' ? '' : 'none';
+  renderRows();
+  if (t === 'players') renderCharts();
+}
 function bars(rows) {
   const mx = Math.max(1, ...rows.map(r => r[1]));
   return rows.map(([k, v]) => `<div class="bar"><span>${esc(k)}</span><div class="t"><div class="fill" style="width:${v / mx * 100}%"></div></div><span class="n">${v}</span></div>`).join('');
@@ -307,31 +353,23 @@ async function renderReport() {
   const watches = await (await fetch('/market/watches')).json();
   const watched = watches.some(w => w.industry.toLowerCase() === R.industry.toLowerCase() && w.area.toLowerCase() === R.area.toLowerCase());
   const all = R.all || [];
+  const nPros = all.filter(isProspect).length;
   $('#report').innerHTML = `
     <div class="rh"><div><h2>${esc(R.industry)} · ${esc(R.area)}</h2>
         <div class="meta">Discrape ${new Date(R.created).toLocaleString('id-ID', {dateStyle: 'medium', timeStyle: 'short'})} dari Google Maps</div></div>
       <div class="acts"><button class="btn ghost watch ${watched ? 'on' : ''}" id="watch">${watched ? '✓ Dipantau mingguan' : '+ Pantau mingguan'}</button>
         <button class="btn ghost" id="csv">Ekspor CSV</button></div></div>
+    <div class="rtabs" id="rtabs"><button data-t="sum" class="on">Ringkasan</button><button data-t="players">Semua pemain<b>${all.length}</b></button>
+      <button data-t="pros">Prospek<b>${nPros}</b></button></div>
+    <section data-tab="sum">
+    <div class="key3">${keyPoints(all).map(([k, v]) => `<div><small>${k}</small><p>${v}</p></div>`).join('')}</div>
     <div class="stats">
-      <div class="stat"><div class="l">Bisnis</div><div class="v">${s.businesses}</div><div class="s">${q ? q.brands + ' brand' : 'batas bawah'}${s.capped ? ', mentok batas' : ''}</div></div>
+      <div class="stat"><div class="l">Bisnis</div><div class="v">${s.businesses}${s.capped ? '+' : ''}</div><div class="s">${q ? q.brands + ' brand' : 'yang muncul di Maps'}${s.capped ? ', bisa lebih banyak' : ''}</div></div>
       <div class="stat"><div class="l">Rating rata-rata</div><div class="v">${s.avg_rating ?? '-'}</div><div class="s">median ${num(s.median_reviews)} ulasan</div></div>
-      <div class="stat"><div class="l">Total ulasan</div><div class="v">${num(s.total_reviews)}</div><div class="s">proksi permintaan</div></div>
-      <div class="stat"><div class="l">Top 3 menguasai</div><div class="v">${s.top3_share}%</div><div class="s">${esc(s.concentration.split(' (')[0])}</div></div>
-      <div class="stat"><div class="l">Punya website</div><div class="v">${d.website}%</div><div class="s">IG ${d.instagram}%, n=${d.sampled}</div></div>
+      <div class="stat"><div class="l">Total ulasan</div><div class="v">${num(s.total_reviews)}</div><div class="s">tanda seberapa ramai pasarnya</div></div>
+      <div class="stat"><div class="l">Porsi 3 teratas</div><div class="v">${s.top3_share}%</div><div class="s">${s.top3_share >= 50 ? 'dikuasai pemain besar' : s.top3_share >= 30 ? 'ada beberapa pemain kuat' : 'persaingan merata'}</div></div>
+      <div class="stat"><div class="l">Punya website</div><div class="v">${d.website}%</div><div class="s">IG ${d.instagram}%, dari ${d.sampled} dicek</div></div>
       <div class="stat"><div class="l">Bisa WhatsApp</div><div class="v">${d.whatsapp}%</div><div class="s">dari sampel detail</div></div>
-    </div>
-    <div class="viz">
-      <div class="ch"><div class="ch-h"><h3>Top 10</h3>
-          <div class="seg" id="rankby"><button data-k="power" class="on">Skor kekuatan</button><button data-k="reviews">Ulasan</button><button data-k="rating">Rating</button></div></div>
-        <div class="rank" id="rank"></div>
-        <div class="legal" id="rankhint"></div></div>
-      <div class="ch"><div class="ch-h"><h3>Peta posisi</h3><span class="hint">rating vs jumlah ulasan</span></div>
-        <div id="scatter"></div>
-        <div class="legend"><span><i style="background:var(--c1)"></i>Prospek (bagus, lemah digital)</span><span><i style="background:var(--c2)"></i>Bisnis lain</span></div></div>
-    </div>
-    <div class="viz2">
-      <div class="ch"><div class="ch-h"><h3>Komposisi kategori</h3><span class="hint">jumlah bisnis</span></div><div id="cats"></div></div>
-      <div class="ch"><div class="ch-h"><h3>Kematangan digital</h3><span class="hint">dari ${d.sampled} bisnis yang dicek detail</span></div><div id="digital"></div></div>
     </div>
     <div class="cols">
       <div>
@@ -345,12 +383,29 @@ async function renderReport() {
           ${q.out_of_area} di luar wilayah, ${q.duplicates_merged} duplikat digabung. ${q.chains} brand punya lebih dari satu cabang.</div>` : ''}
       </div>
     </div>
+    </section>
+    <section data-tab="players">
+    <div class="viz">
+      <div class="ch"><div class="ch-h"><h3>Top 10</h3>
+          <div class="seg" id="rankby"><button data-k="power" class="on">Skor kekuatan</button><button data-k="reviews">Ulasan</button><button data-k="rating">Rating</button></div></div>
+        <div class="rank" id="rank"></div>
+        <div class="legal" id="rankhint"></div></div>
+      <div class="ch"><div class="ch-h"><h3>Peta posisi</h3><span class="hint">rating vs jumlah ulasan</span></div>
+        <div id="scatter"></div>
+        <div class="legend"><span><i style="background:var(--c1)"></i>Prospek (bagus, lemah digital)</span><span><i style="background:var(--c2)"></i>Bisnis lain</span></div></div>
+    </div>
+    <div class="viz2">
+      <div class="ch"><div class="ch-h"><h3>Komposisi kategori</h3><span class="hint">jumlah bisnis</span></div><div id="cats"></div></div>
+      <div class="ch"><div class="ch-h"><h3>Kematangan digital</h3><span class="hint">dari ${d.sampled} bisnis yang dicek detail</span></div><div id="digital"></div></div>
+    </div>
+    </section>
     <div class="tcard">
       <div class="tools">
         <label class="q">${ICON.search}<input id="q" placeholder="Cari nama, alamat, kategori, @ig, website"></label>
         <div class="filters" id="filters"></div>
         <span class="count" id="count"></span>
       </div>
+      <div class="pros-hint" id="proshint" style="display:none">Diurutkan dari skor prospek tertinggi. Kelola follow up semua wilayah di <a href="/prospects">papan Prospek</a>.</div>
       <div class="offer" id="offerbar" style="display:none">Penawaranmu untuk draf pesan:
         <input id="offer" value="${esc(offer())}" placeholder="mis. bikin website dan katalog online"></div>
       <div class="tw"><table><thead><tr>
@@ -362,7 +417,8 @@ async function renderReport() {
     <div class="legal">Semua baris hasil scraping Google Maps dan website bisnis. Kolom kosong berarti tidak tercantum di sumber, atau detailnya belum diambil (ditandai "belum dicek"). Hubungi secukupnya, satu pesan, jangan spam.</div>`;
 
   $('#filters').innerHTML = FILTERS.map(([k, l, fn]) => `<button class="f ${k === view.filter ? 'on' : ''}" data-f="${k}">${l}<b>${all.filter(fn).length}</b></button>`).join('');
-  document.querySelectorAll('#filters .f').forEach(b => b.onclick = () => { view.filter = b.dataset.f; view.open = null; renderRows();
+  document.querySelectorAll('#filters .f').forEach(b => b.onclick = () => { view.filter = b.dataset.f; view.open = null;
+    if (['prospect', 'followup'].includes(view.filter)) { view.sort = 'lead'; view.dir = -1; } renderRows();
     document.querySelectorAll('#filters .f').forEach(x => x.classList.toggle('on', x === b)); });
   document.querySelectorAll('thead th.s').forEach(th => th.onclick = () => {
     const k = th.dataset.k; view.dir = view.sort === k ? -view.dir : (k === 'name' || k === 'dist' ? 1 : -1); view.sort = k; renderRows(); });
@@ -374,8 +430,8 @@ async function renderReport() {
     await fetch('/market/watch', {method: 'POST', body: JSON.stringify({industry: R.industry, area: R.area, on, last_run: R.created})});
   };
   $('#csv').onclick = exportCsv;
-  renderRows();
-  renderCharts();
+  document.querySelectorAll('#rtabs button').forEach(b => b.onclick = () => showTab(b.dataset.t));
+  showTab('sum');
 }
 
 // ---------- charts ----------
@@ -469,7 +525,7 @@ function filtered() {
   let rows = (R.all || []).filter(fn);
   if (view.q) rows = rows.filter(p => [p.name, p.address, p.category, p.instagram, p.website, p.phone].join(' ').toLowerCase().includes(view.q));
   const key = {name: p => clean(p.name).toLowerCase(), rating: p => (p.rating || 0) * 1e6 + (p.reviews || 0), reviews: p => p.reviews || 0,
-               rpm: p => p.reviews_per_month ?? -1, website: p => p.website ? 1 : 0, instagram: p => p.instagram ? 1 : 0, dist: p => p.dist_km ?? 999}[view.sort];
+               rpm: p => p.reviews_per_month ?? -1, lead: p => p.lead_score ?? -1, website: p => p.website ? 1 : 0, instagram: p => p.instagram ? 1 : 0, dist: p => p.dist_km ?? 999}[view.sort];
   return rows.sort((a, b) => { const x = key(a), y = key(b); return (x > y ? 1 : x < y ? -1 : 0) * view.dir; });
 }
 function renderRows() {
@@ -483,7 +539,7 @@ function renderRows() {
   });
   if (!rows.length) { $('#rows').innerHTML = '<tr><td colspan="9" class="empty">Tidak ada bisnis yang cocok.</td></tr>'; return; }
   $('#rows').innerHTML = rows.map((p, i) => {
-    const g = gapsOf(p), wa = waOf(p), unk = '<span class="none">belum dicek</span>', no = '<span class="none">-</span>';
+    const g = gapsOf(p), wa = waOf(p), unk = `<button class="chk" data-chk="${i}" title="Ambil telepon, website, dan IG dari Google Maps">Cek</button>`, no = '<span class="none">-</span>';
     const badges = [isGem(p) ? '<span class="badge g">hidden gem</span>' : '', isWeak(p) ? '<span class="badge r">rating rendah</span>' : '',
                     p.branches_in_area > 1 ? `<span class="badge">${p.branches_in_area} cabang</span>` : '',
                     isProspect(p) ? '<span class="badge w">prospek</span>' : ''].join('');
@@ -493,9 +549,13 @@ function renderRows() {
     const ig = p.instagram ? `<a class="lnk" href="https://instagram.com/${esc(p.instagram)}" target="_blank">${ICON.ig}@${esc(p.instagram)}</a>${p.instagram_shared ? '<div class="sub">akun brand</div>' : ''}`
                            : (p._detailed ? no : unk);
     const mail = (p.emails || []).length ? p.emails.slice(0, 2).map(e => `<a class="lnk" href="mailto:${esc(e)}">${ICON.mail}${esc(e)}</a>`).join('<br>') : no;
+    const ls = p.lead_score;
+    const lead = ls == null ? '' : `<div class="lrow"><span class="ls ${ls >= 60 ? 'hi' : ''}" title="${esc((p.lead_reasons || []).join(', '))}">${ls}</span>
+        <span class="sub">${esc((p.lead_reasons || []).slice(0, 3).join(', '))}</span>
+        <select data-l="${i}" class="${p.lead ? 'set' : ''}"><option value="">status</option>${LEAD_ST.map(st => `<option ${p.lead?.status === st ? 'selected' : ''}>${st}</option>`).join('')}</select></div>`;
     const row = `<tr>
-      <td class="biz"><div class="nm">${esc(p.name)} ${badges}</div><div class="sub">${esc(p.category || '')}${p.price ? ' · ' + esc(p.price) : ''}</div>
-        <div class="sub">${esc(p.address || '')}</div>
+      <td class="biz"><div class="nm"><button class="nm-btn" data-bz="${i}">${esc(p.name)}</button> ${badges}</div><div class="sub">${esc(p.category || '')}${p.price ? ' · ' + esc(p.price) : ''}</div>
+        <div class="sub">${esc(p.address || '')}</div>${lead}
         ${g && g.length ? `<button class="mini" data-d="${i}">${view.open === i ? 'Tutup draf' : 'Draf pesan'}</button>` : ''}</td>
       <td class="rating">${p.rating ? `<span class="st">★</span> <b>${String(p.rating).replace('.', ',')}</b>` : no}<div class="rv">${num(p.reviews)} ulasan</div></td>
       <td>${p.reviews_per_month != null ? (p.reviews_per_month > 0 ? '<span style="color:var(--accent)">+' + p.reviews_per_month + '</span>' : p.reviews_per_month) : no}</td>
@@ -508,13 +568,26 @@ function renderRows() {
   }).join('');
   document.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { view.open = view.open === +b.dataset.d ? null : +b.dataset.d;
     if (view.open != null) { view.filter = view.filter; $('#offerbar').style.display = ''; } renderRows(); });
+  const ctx = {industry: R.industry, area: R.area, report_id: current, onChange: () => renderRows()};
+  document.querySelectorAll('[data-bz]').forEach(b => b.onclick = () => Shell.openBusiness(rows[+b.dataset.bz], ctx));
+  document.querySelectorAll('[data-chk]').forEach(b => b.onclick = async () => {
+    const p = rows[+b.dataset.chk];
+    document.querySelectorAll(`[data-chk="${b.dataset.chk}"]`).forEach(x => { x.disabled = true; x.textContent = 'Mengecek…'; });
+    const r = await fetch('/market/detail', {method: 'POST', body: JSON.stringify({report_id: current, key: leadKey(p)})});
+    const j = await r.json();
+    if (!r.ok) { Shell.toast(j.error || 'Gagal'); renderRows(); return; }
+    Object.assign(p, j); Shell.toast(`Kontak ${clean(p.name)} diperbarui`); renderRows();
+  });
+  document.querySelectorAll('[data-l]').forEach(sel => sel.onchange = async () => {
+    if (!sel.value) return;
+    await setLead(rows[+sel.dataset.l], sel.value); sel.classList.add('set'); });
   document.querySelectorAll('[data-c]').forEach(b => b.onclick = async () => {
     try { await navigator.clipboard.writeText(draft(rows[+b.dataset.c])); b.textContent = 'Tersalin ✓'; } catch (e) { b.textContent = 'Gagal'; } });
 }
 function exportCsv() {
-  const cols = ['name', 'category', 'rating', 'reviews', 'reviews_per_month', 'phone', 'website', 'instagram', 'emails', 'address', 'dist_km', 'maps_url'];
+  const cols = ['name', 'lead_score', 'lead_reasons', 'lead_status', 'category', 'rating', 'reviews', 'reviews_per_month', 'phone', 'website', 'instagram', 'emails', 'address', 'dist_km', 'maps_url'];
   const q = v => '"' + String(Array.isArray(v) ? v.join(' ') : v ?? '').replace(/"/g, '""') + '"';
-  const lines = [cols.join(',')].concat(filtered().map(p => cols.map(c => q(c === 'name' ? clean(p.name) : p[c])).join(',')));
+  const lines = [cols.join(',')].concat(filtered().map(p => cols.map(c => q(c === 'name' ? clean(p.name) : c === 'lead_status' ? p.lead?.status : p[c])).join(',')));
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['﻿' + lines.join('\n')], {type: 'text/csv'}));
   a.download = `${R.industry}-${R.area}.csv`.replace(/\s+/g, '-').toLowerCase(); a.click();
@@ -554,31 +627,49 @@ $('#f').onsubmit = async e => {
   }
   const j = await r.json();
   if (!r.ok) { $('#status').textContent = j.error; return; }
+  Shell.askNotify();
   poll();
 };
-const STEP = {'1/5': 'Mencari di Google Maps', '2/5': 'Mengambil telepon, website, IG', '3/5': 'Mencari IG dari website', '4/5': 'Menyusun laporan', '5/5': 'Menyimpan'};
+const STEP = {'1/5': 'Cari di Google Maps', '2/5': 'Ambil telepon dan website', '3/5': 'Cari akun IG', '4/5': 'Susun laporan', '5/5': 'Simpan'};
+function progress(log, started) {
+  const m = [...log.matchAll(/\[(\d)\/5\]/g)].pop(), c = [...log.matchAll(/\[compare\] wilayah (\d+)\/(\d+): ([^\n]*)/g)].pop();
+  const cur = m ? +m[1] : 0;
+  let pct = cur ? (cur - 1) / 5 * 100 + 10 : 3;
+  if (c) pct = ((+c[1] - 1) + Math.max(cur - 1, 0) / 5) / +c[2] * 100;
+  const sec = started ? Math.round(Date.now() / 1000 - started) : 0;
+  const el = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+  return `<div class="prog"><div class="prog-h"><b>${c ? `Wilayah ${c[1]} dari ${c[2]}: ${esc(c[3])}` : 'Riset sedang berjalan'}</b>
+      <span class="mono" style="color:var(--muted)">${el}</span><button class="btn ghost" id="stop">Hentikan</button></div>
+    <div class="prog-bar"><i style="width:${Math.min(pct, 97)}%"></i></div>
+    <ol>${Object.entries(STEP).map(([k, v], i) => `<li class="${i + 1 < cur ? 'done' : i + 1 === cur ? 'now' : ''}">${v}</li>`).join('')}</ol>
+    <div class="eta">Biasanya 2 sampai 4 menit per wilayah. Boleh pindah tab atau halaman, kamu akan diberi tahu saat selesai.</div></div>`;
+}
 async function poll() {
   const j = await (await fetch('/log')).json();
   const log = j.log || '';
   $('#go').disabled = j.running;
   if (j.running) {
-    const m = [...log.matchAll(/\[(\d\/5)\]/g)].pop(), c = [...log.matchAll(/\[compare\] (wilayah[^\n]*)/g)].pop();
-    $('#status').innerHTML = `<span class="dot"></span>${c ? esc(c[1]) + ' · ' : ''}${m ? STEP[m[1]] : 'Memulai'}…`;
+    $('#status').innerHTML = progress(log, j.started);
+    $('#stop').onclick = async () => { $('#stop').disabled = true; await fetch('/stop', {method: 'POST', body: '{}'}); };
     setTimeout(poll, 1500);
+  } else if (wasRunning && j.stopped) {
+    $('#status').textContent = 'Riset dihentikan.';
   } else if (wasRunning) {
     if (pending && /COMPARE_DONE/.test(log)) {
       $('#status').textContent = 'Selesai.';
+      Shell.notify('Perbandingan wilayah selesai', pending.industry);
       renderCompare(await (await fetch('/market/compare?industry=' + encodeURIComponent(pending.industry) + '&areas=' + encodeURIComponent(pending.areas.join(';')))).json());
       loadRecent(); current = 'cmp';
     } else {
       const m = [...log.matchAll(/REPORT_ID=(\d+)/g)].pop();
-      $('#status').textContent = m ? 'Selesai.' : 'Gagal: ' + (log.trim().split('\n').slice(-1)[0] || '');
+      $('#status').textContent = m ? 'Selesai.' : 'Gagal: ' + (log.trim().split('\n').filter(l => !/^\[selesai/.test(l)).slice(-1)[0] || '');
+      if (m) Shell.notify('Riset selesai', 'Laporan sudah siap dibuka.');
       loadRecent(m && m[1]);
     }
   }
   wasRunning = j.running;
 }
-loadRecent(); poll();
+loadRecent(new URLSearchParams(location.search).get('id')); poll();
 </script>
 </body>
 </html>

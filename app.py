@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import html as htmllib
@@ -23,6 +24,22 @@ from report_dashboard import CSS as REPORT_CSS, JS as REPORT_JS, build_html, fmt
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = 8000
 
+
+def load_env(path=os.path.join(HERE, ".env")):
+    """Isi os.environ dari .env (format `export KEY="nilai"`), tanpa menimpa yang sudah di-set."""
+    if not os.path.exists(path):
+        return
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            m = re.match(r'\s*(?:export\s+)?([A-Z_][A-Z0-9_]*)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s#]*))', line)
+            if m and m.group(1) not in os.environ:
+                val = next(g for g in m.groups()[1:] if g is not None)
+                if val:
+                    os.environ[m.group(1)] = val
+
+
+load_env()
+
 JOB = {"proc": None, "log": [], "lock": threading.Lock()}
 
 PAGE = """<!DOCTYPE html>
@@ -30,7 +47,7 @@ PAGE = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>IG Scraper</title>
+<title>Pengaturan lanjutan · Raqio</title>
 <style>
 * { box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -60,7 +77,8 @@ input[type=text] { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-
 </head>
 <body>
 <div class="wrap">
-  <h1>IG Scraper</h1>
+  <p style="margin:0 0 6px"><a href="/market" style="color:#475569;font-size:13px">← Kembali ke Riset</a></p>
+  <h1>Pengaturan lanjutan</h1>
 
   <div class="panel">
     <form onsubmit="ask(event)" style="display:flex;gap:8px">
@@ -104,12 +122,12 @@ input[type=text] { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-
     <textarea id="targets" placeholder="nike, adidas"></textarea>
     <div class="row">
       <div>
-        <label for="mode">Mode</label>
+        <label for="mode">Koneksi</label>
         <select id="mode">
-          <option value="direct">direct, IP rumah (paling aman)</option>
-          <option value="mobile">mobile, hotspot HP</option>
-          <option value="webshare">webshare, proxies_webshare.txt</option>
-          <option value="custom">custom, proxies.txt</option>
+          <option value="direct">Aman, pelan (koneksi internet sendiri)</option>
+          <option value="mobile">Hotspot HP (ganti IP otomatis)</option>
+          <option value="webshare">Cepat, pakai proxy Webshare</option>
+          <option value="custom">Cepat, pakai daftar proxy sendiri</option>
         </select>
       </div>
       <div>
@@ -119,12 +137,13 @@ input[type=text] { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-
     </div>
     <label class="check"><input type="checkbox" id="force"> Scrape ulang walau baru di-scrape (&lt; 24 jam)</label>
     <button class="runbtn" onclick="run()">Jalankan</button><span id="status"></span>
-    <div class="hint">Mode direct: ±15 profil per jam. Lebih dari itu, script menunggu sendiri.</div>
+    <div class="hint">Mode aman: sekitar 15 akun per jam supaya tidak diblokir Instagram. Lebih dari itu, proses menunggu sendiri.</div>
   </div>
 
   <div class="panel">
-    <label>Log</label>
-    <pre id="log">Belum ada proses.</pre>
+    <label>Status: <span id="runstate">tidak ada proses</span></label>
+    <details><summary style="cursor:pointer;font-size:13px;color:#475569">Lihat detail teknis</summary>
+    <pre id="log" style="margin-top:8px">Belum ada proses.</pre></details>
   </div>
 
   <div class="tabs">
@@ -195,6 +214,9 @@ async function poll() {
   if (atBottom) el.scrollTop = el.scrollHeight;
   document.querySelectorAll('.runbtn').forEach(b => b.disabled = j.running);
   document.getElementById('status').textContent = j.running ? 'Sedang berjalan…' : '';
+  const last = (j.log || '').trim().split('\\n').filter(l => l.trim() && !l.startsWith('$')).pop() || '';
+  document.getElementById('runstate').textContent = j.running ? 'sedang berjalan: ' + last.replace(/^\\d\\d:\\d\\d:\\d\\d\\s*/, '').slice(0, 120)
+    : j.stopped ? 'dihentikan' : /exit code 0/.test(last) ? 'selesai' : j.log ? 'berhenti dengan error, buka detail teknis' : 'tidak ada proses';
   if (wasRunning && !j.running) document.getElementById('report').src = currentTab + '?' + Date.now();
   wasRunning = j.running;
   if (j.running) setTimeout(poll, 1500);
@@ -331,11 +353,27 @@ def start_job(data: dict):
     return launch(cmd)
 
 
+def stop_job():
+    with JOB["lock"]:
+        proc = JOB["proc"]
+        if not proc or proc.poll() is not None:
+            return False
+        JOB["stopped"] = True
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+    return True
+
+
 def launch(cmd):
     with JOB["lock"]:
         if JOB["proc"] and JOB["proc"].poll() is None:
             return "Masih ada proses yang berjalan."
         JOB["log"] = ["$ " + " ".join(cmd[3:]) + "\n"]
+        JOB["started"] = time.time()
+        JOB["stopped"] = False
         JOB["proc"] = subprocess.Popen(cmd, cwd=HERE, stdout=subprocess.PIPE,
                                        stderr=subprocess.STDOUT, text=True)
 
@@ -411,7 +449,7 @@ def competitors_html():
                         f'<div class="value">{e(str(v))}</div></div>' for l, v in cards)
     return f"""<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kompetitor Lokal</title><style>{REPORT_CSS}</style></head><body>
+<title>Kompetitor IG · Raqio</title><style>{REPORT_CSS}</style></head><body>
 <div class="cards">{card_html}</div>
 <div class="filter-bar"><button class="active" onclick="filterType(this, 'ALL')">Semua lokasi</button>{loc_buttons}</div>
 <div class="table-wrap"><table><thead><tr>{heads}</tr></thead><tbody>{''.join(trs)}</tbody></table></div>
@@ -428,6 +466,21 @@ Tren Google = rata-rata 4 minggu terakhir vs 4 minggu sebelumnya.</p>
 CHAT = {"sessions": {}, "jobs": {}, "lock": threading.Lock(), "seq": 0}
 
 
+class ChatStopped(Exception):
+    pass
+
+
+def chat_stop(jid):
+    with CHAT["lock"]:
+        job = CHAT["jobs"].get(jid)
+        if not job or job["done"]:
+            return False
+        job["cancel"] = True
+    # agent mungkin sedang menunggu tool/LLM; tandai selesai sekarang supaya UI tidak menunggu
+    job["error"], job["done"] = "Dihentikan.", True
+    return True
+
+
 def chat_start(sid: str, message: str):
     import agent
     with CHAT["lock"]:
@@ -437,9 +490,11 @@ def chat_start(sid: str, message: str):
         sess["busy"] = True
         CHAT["seq"] += 1
         jid = str(CHAT["seq"])
-        job = CHAT["jobs"][jid] = {"steps": [], "done": False, "answer": "", "error": ""}
+        job = CHAT["jobs"][jid] = {"steps": [], "done": False, "answer": "", "error": "", "cancel": False}
 
     def step(s):
+        if job["cancel"]:
+            raise ChatStopped()
         with CHAT["lock"]:
             job["steps"].append(s)
 
@@ -452,7 +507,11 @@ def chat_start(sid: str, message: str):
                     tail.pop(0)
                 history = [history[0]] + tail
             sess["history"] = history
+            if job["cancel"]:
+                raise ChatStopped()
             job["answer"] = answer
+        except ChatStopped:
+            job["error"] = "Dihentikan."
         except Exception as e:
             job["error"] = str(e)
         finally:
@@ -468,77 +527,122 @@ CHAT_PAGE = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Riset Kompetitor</title>
+<title>Asisten · Raqio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-:root { --bg:#f8fafc; --panel:#fff; --line:#e2e8f0; --text:#1e293b; --muted:#64748b; --accent:#4f46e5; --me:#eef2ff; }
-@media (prefers-color-scheme: dark) { :root { --bg:#0f172a; --panel:#1e293b; --line:#334155;
-  --text:#e2e8f0; --muted:#94a3b8; --accent:#818cf8; --me:#312e81; } }
+:root {
+  --bg: #F6F5F3; --panel: #FFFFFF; --sunk: #ECEBE9; --line: #E2E1E0; --line-2: #EFEEEC;
+  --text: #0B0B0B; --muted: #6F6E6B; --faint: #A3A29F;
+  --ink: #161616; --ink-text: #F8F8F8; --accent: #00BC87; --accent-soft: #E3F6EF; --bad: #D4483B;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0B0B0B; --panel: #141414; --sunk: #1C1C1C; --line: #262626; --line-2: #1E1E1E;
+  --text: #F2F2F0; --muted: #9A9996; --faint: #6A6967;
+  --ink: #F2F2F0; --ink-text: #0B0B0B; --accent: #19D29C; --accent-soft: #0F2A21; --bad: #EF6B5F; } }
+:root[data-theme="dark"] {
+  --bg: #0B0B0B; --panel: #141414; --sunk: #1C1C1C; --line: #262626; --line-2: #1E1E1E;
+  --text: #F2F2F0; --muted: #9A9996; --faint: #6A6967;
+  --ink: #F2F2F0; --ink-text: #0B0B0B; --accent: #19D29C; --accent-soft: #0F2A21; --bad: #EF6B5F; }
 * { box-sizing: border-box; }
-html, body { height: 100%; margin: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-       background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
-header { display: flex; align-items: center; gap: 16px; padding: 12px 16px;
-         border-bottom: 1px solid var(--line); background: var(--panel); }
-header h1 { font-size: 16px; margin: 0; flex: 1; }
-header a { color: var(--muted); font-size: 13px; text-decoration: none; }
-header a:hover { color: var(--accent); }
-#msgs { flex: 1; overflow-y: auto; padding: 24px 16px; }
+html, body { margin: 0; }
+body { font-family: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg);
+       color: var(--text); font-size: 14px; -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+button { font: inherit; cursor: pointer; }
+code { font-family: "Geist Mono", ui-monospace, monospace; font-size: 12.5px; background: var(--sunk); padding: 2px 6px; border-radius: 5px; }
+.top { display: flex; align-items: center; gap: 20px; padding: 14px 28px; border-bottom: 1px solid var(--line); background: var(--bg);
+       position: sticky; top: 0; z-index: 20; }
+.brand { font-weight: 700; letter-spacing: -.02em; font-size: 15px; display: flex; align-items: center; gap: 8px; text-decoration: none; }
+.brand i { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); display: inline-block; }
+.top nav { margin-left: auto; display: flex; gap: 18px; flex-wrap: wrap; }
+.top nav a { text-decoration: none; color: var(--muted); font-size: 13px; }
+.top nav a:hover, .top nav a.on { color: var(--text); }
+.hero { max-width: 820px; margin: 0 auto; padding: 9vh 0 0; }
+h1 { font-size: 44px; letter-spacing: -.04em; line-height: 1.05; margin: 0 0 12px; font-weight: 600; }
+h1 span { color: var(--faint); }
+.lead { color: var(--muted); font-size: 16px; line-height: 1.55; margin: 0 0 26px; max-width: 600px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; background: var(--ink); color: var(--ink-text); border: 0;
+       border-radius: 10px; padding: 0 20px; font-weight: 500; height: 42px; white-space: nowrap; text-decoration: none; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.ghost { background: var(--panel); color: var(--text); border: 1px solid var(--line); }
+.feats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 36px; }
+.feat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; text-decoration: none; display: block; }
+.feat:hover { border-color: var(--faint); }
+.feat b { display: block; font-weight: 600; margin-bottom: 4px; }
+.feat span { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.feat em { font-style: normal; color: var(--accent); font-size: 12px; display: block; margin-top: 10px; }
+@media (max-width: 720px) { .top { padding: 12px 16px; gap: 12px; } .top nav { gap: 12px; } h1 { font-size: 30px; }
+  .hero { padding-top: 5vh; } .feats { grid-template-columns: 1fr; } }
+</style>
+<style>
+html, body { height: 100%; }
+body { display: flex; flex-direction: column; }
+#msgs { flex: 1; overflow-y: auto; padding: 0 16px 24px; }
 .wrap { max-width: 820px; margin: 0 auto; }
-.msg { margin-bottom: 18px; line-height: 1.55; font-size: 15px; }
-.msg.me { background: var(--me); padding: 10px 14px; border-radius: 12px; margin-left: auto;
+#list { padding-top: 24px; }
+.msg { margin-bottom: 20px; line-height: 1.6; font-size: 15px; }
+.msg.me { background: var(--ink); color: var(--ink-text); padding: 10px 14px; border-radius: 14px 14px 4px 14px; margin-left: auto;
           width: fit-content; max-width: 85%; white-space: pre-wrap; }
-.msg.bot { overflow-x: auto; }
+.msg.bot { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; }
 .msg.bot p { margin: 0 0 10px; }
+.msg.bot p:last-child { margin-bottom: 0; }
+.msg.bot a { color: var(--accent); }
 .msg.bot table { border-collapse: collapse; margin: 8px 0 12px; font-size: 13px; }
-.msg.bot th, .msg.bot td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
-.msg.bot th { background: var(--panel); }
-.msg.bot code { background: var(--panel); border: 1px solid var(--line); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+.msg.bot th, .msg.bot td { border-bottom: 1px solid var(--line-2); padding: 7px 10px; text-align: left; }
+.msg.bot th { color: var(--muted); font-weight: 500; font-size: 12px; }
 .msg.bot ul, .msg.bot ol { margin: 0 0 10px; padding-left: 22px; }
-.msg.bot h1, .msg.bot h2, .msg.bot h3 { font-size: 15px; margin: 14px 0 6px; }
-.steps { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-.steps div::before { content: "› "; }
-.err { color: #dc2626; }
-.typing::after { content: "▍"; animation: blink 1s steps(1) infinite; }
+.msg.bot h1, .msg.bot h2, .msg.bot h3 { font-size: 15px; margin: 14px 0 6px; font-weight: 600; letter-spacing: 0; }
+.steps { font-size: 12px; color: var(--muted); margin-bottom: 8px; font-family: "Geist Mono", ui-monospace, monospace; }
+.steps div::before { content: "› "; color: var(--accent); }
+.err { color: var(--bad); }
+.typing::after { content: "▍"; animation: blink 1s steps(1) infinite; color: var(--accent); }
 @keyframes blink { 50% { opacity: 0; } }
-.empty { color: var(--muted); text-align: center; margin-top: 12vh; }
-.empty b { color: var(--text); display: block; font-size: 20px; margin-bottom: 8px; }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 18px; }
-.chip { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 999px;
-        padding: 7px 12px; font-size: 13px; cursor: pointer; }
-.chip:hover { border-color: var(--accent); }
-form { border-top: 1px solid var(--line); background: var(--panel); padding: 12px 16px; }
-form .wrap { display: flex; gap: 8px; }
-textarea { flex: 1; resize: none; height: 46px; max-height: 160px; padding: 12px; font: inherit; font-size: 15px;
-           border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text); }
-button { background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: 0 18px;
-         font-size: 15px; cursor: pointer; }
-button:disabled { opacity: .5; cursor: default; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.chip { border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 999px;
+        padding: 6px 12px; font-size: 13px; cursor: pointer; }
+.chip:hover { color: var(--text); border-color: var(--faint); }
+form { padding: 12px 16px 18px; background: var(--bg); }
+form .wrap { display: flex; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 6px; }
+form .wrap:focus-within { border-color: var(--faint); }
+textarea { flex: 1; resize: none; height: 44px; max-height: 160px; padding: 11px 12px; font: inherit; font-size: 15px;
+           border: 0; outline: none; background: transparent; color: var(--text); }
+form .hint { max-width: 820px; margin: 8px auto 0; color: var(--faint); font-size: 12px; text-align: center; }
+.embed .feats, .embed form .hint { display: none; }
+.embed .hero { padding-top: 24px; }
+.embed .hero h1 { font-size: 36px !important; }
+.embed .lead { font-size: 15px !important; }
+#send.stop { background: transparent !important; color: var(--text) !important; border: 1px solid var(--line) !important; }
 </style>
 </head>
 <body>
-<header>
-  <h1>Riset Kompetitor</h1>
-  <a href="/market"><b>Riset pasar</b></a>
-  <a href="/competitors" target="_blank">Data kompetitor</a>
-  <a href="/report" target="_blank">Analisis IG</a>
-  <a href="/tools">Mode manual</a>
-  <a href="#" onclick="newChat();return false">Chat baru</a>
-</header>
+<div class="top">
+  <a class="brand" href="/"><i></i>raqio</a>
+  <nav><a href="/" class="on">Chat</a><a href="/market">Riset pasar</a><a href="/competitors" target="_blank">Kompetitor IG</a>
+    <a href="/report" target="_blank">Analisis IG</a><a href="/tools">Manual</a><a href="#" onclick="newChat();return false">Chat baru</a></nav>
+</div>
 <div id="msgs"><div class="wrap" id="list">
-  <div class="empty" id="empty"><b>Mau riset bisnis apa?</b>
-    Tanya bebas, agent akan cari bisnis di lokasi itu, cek IG, website, dan tren Google.
+  <div class="hero" id="empty">
+    <h1>Kenali pasarmu. <span>Temukan celahnya.</span></h1>
+    <p class="lead">Tanya bebas soal bisnis apa pun di lokasi mana pun. Agent akan mencari pemainnya, mengecek IG, website,
+      dan tren, lalu merangkum siapa yang kuat, siapa yang lemah, dan di mana peluangnya.</p>
     <div class="chips">
       <span class="chip">kompetitor coffee shop di Kemang siapa aja?</span>
       <span class="chip">riset pasar agency di Gading Serpong</span>
       <span class="chip">salon di Dago Bandung yang paling rame di IG</span>
       <span class="chip">bandingin Kopi Kenangan sama Janji Jiwa</span>
     </div>
+    <div class="feats">
+      <a class="feat" href="/market"><b>Riset pasar</b><span>Peta pemain per industri dan wilayah, skor kekuatan, dan prospek siap dihubungi.</span><em>Buka →</em></a>
+      <a class="feat" href="/competitors" target="_blank"><b>Kompetitor IG</b><span>Followers, engagement, dan pertumbuhan akun Instagram pesaing.</span><em>Buka →</em></a>
+      <a class="feat" href="/tools"><b>Mode manual</b><span>Atur sendiri kategori, radius, dan jumlah akun yang di-scrape.</span><em>Buka →</em></a>
+    </div>
   </div>
 </div></div>
 <form id="form"><div class="wrap">
-  <textarea id="input" placeholder="Tulis pertanyaan… (Enter kirim, Shift+Enter baris baru)" autofocus></textarea>
-  <button id="send" type="submit">Kirim</button>
-</div></form>
+  <textarea id="input" placeholder="Tanya soal pasar atau kompetitor…" autofocus></textarea>
+  <button class="btn" id="send" type="submit">Kirim</button>
+</div><div class="hint">Enter untuk kirim, Shift+Enter untuk baris baru</div></form>
 <script>
 let sid = localStorage.getItem('sid') || (Math.random().toString(36).slice(2));
 try { localStorage.setItem('sid', sid); } catch (e) {}
@@ -598,47 +702,168 @@ function add(cls, html) {
 }
 async function ask(text) {
   text = text.trim(); if (!text) return;
-  add('me', esc(text)); input.value = ''; send.disabled = true;
+  add('me', esc(text)); input.value = '';
   const bot = add('bot', '<div class="steps"></div><div class="typing"></div>');
   const r = await fetch('/chat', {method: 'POST', body: JSON.stringify({sid, message: text})});
   const j = await r.json();
-  if (!r.ok) { bot.innerHTML = '<span class="err">' + esc(j.error) + '</span>'; send.disabled = false; return; }
+  if (!r.ok) { bot.innerHTML = '<span class="err">' + esc(j.error) + '</span>'; return; }
+  busy(j.job);
   const poll = async () => {
     const p = await (await fetch('/chat/poll?job=' + j.job)).json();
     bot.querySelector('.steps').innerHTML = p.steps.map(s => '<div>' + esc(stepText(s)) + '</div>').join('');
     if (p.done) {
       bot.innerHTML = (p.steps.length ? '<div class="steps">' + p.steps.map(s => '<div>' + esc(stepText(s)) + '</div>').join('') + '</div>' : '')
-        + (p.error ? '<span class="err">' + esc(p.error) + '</span>' : md(p.answer));
-      send.disabled = false; input.focus();
+        + (p.error ? '<span class="err">' + esc(p.error) + '</span>' : md(p.answer) + actions(p.answer));
+      busy(null); input.focus();
     } else setTimeout(poll, 1200);
     box.scrollTop = box.scrollHeight;
   };
   poll();
+}
+let running = null;
+function busy(jid) {
+  running = jid;
+  send.textContent = jid ? 'Stop' : 'Kirim';
+  send.classList.toggle('stop', !!jid);
+}
+// tombol lanjutan di bawah jawaban, supaya jawaban bisa langsung ditindaklanjuti
+function actions(answer) {
+  const a = [];
+  if (/riset|pasar|wilayah|prospek/i.test(answer)) a.push(['/market', 'Buka laporan riset']);
+  if (/prospek|whatsapp|hubungi/i.test(answer)) a.push(['/prospects', 'Lihat prospek']);
+  if (/instagram|followers|@\\w/i.test(answer)) a.push(['/competitors', 'Data kompetitor IG']);
+  if (!a.length) return '';
+  return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
+    a.map(([h, l]) => `<a class="btn ghost" style="height:34px;font-size:11px!important" href="${h}" target="_top">${l}</a>`).join('') + '</div>';
 }
 function newChat() {
   sid = Math.random().toString(36).slice(2);
   try { localStorage.setItem('sid', sid); } catch (e) {}
   location.reload();
 }
-document.getElementById('form').onsubmit = e => { e.preventDefault(); if (!send.disabled) ask(input.value); };
-input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!send.disabled) ask(input.value); } });
+document.getElementById('form').onsubmit = async e => {
+  e.preventDefault();
+  if (running) { await fetch('/chat/stop', {method: 'POST', body: JSON.stringify({job: running})}); return; }
+  ask(input.value);
+};
+input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!running) ask(input.value); } });
 document.querySelectorAll('.chip').forEach(c => c.onclick = () => ask(c.textContent));
 </script>
 </body>
 </html>"""
+
+def themed(html):
+    """Tempel templates/theme.css (dibaca tiap request, edit langsung terlihat)."""
+    with open(os.path.join(HERE, "templates", "theme.css"), encoding="utf-8") as f:
+        css = f.read()
+    font = ('<link href="https://fonts.googleapis.com/css2?family=Albert+Sans:wght@400;700'
+            '&display=swap" rel="stylesheet">')
+    shell = '<link rel="icon" href="/static/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/shell.css"><script src="/static/shell.js" defer></script>'
+    return html.replace("</head>", f"{font}{shell}<style>{css}</style></head>", 1)
+
+
+def template(name):
+    with open(os.path.join(HERE, "templates", name), encoding="utf-8") as f:
+        return f.read()
+
+
+def ig_profile(username):
+    """Ringkasan profil IG yang pernah di-scrape (untuk panel detail bisnis)."""
+    if not username or not os.path.exists(os.path.join(HERE, "ig.db")):
+        return {"found": False}
+    conn = sqlite3.connect(os.path.join(HERE, "ig.db"))
+    try:
+        row = conn.execute("SELECT data, followers_history, last_scraped FROM profiles WHERE lower(username)=?",
+                           (username,)).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return {"found": False, "username": username}
+    d, hist = json.loads(row[0] or "{}"), json.loads(row[1] or "[]")
+    st = d.get("stats") or {}
+    delta = None
+    if len(hist) > 1:
+        delta = (hist[-1].get("followers") or 0) - (hist[0].get("followers") or 0)
+    return {"found": True, "username": d.get("username") or username, "full_name": d.get("full_name"),
+            "biography": d.get("biography"), "followers": d.get("followers"), "following": d.get("following"),
+            "posts_count": d.get("posts_count"), "is_verified": d.get("is_verified"),
+            "engagement_rate": st.get("engagement_rate"), "posts_per_week": st.get("posts_per_week"),
+            "avg_likes": st.get("avg_likes"), "best_day": st.get("best_day"),
+            "top_posts": (st.get("top_posts") or [])[:3], "followers_delta": delta,
+            "tracked_since": hist[0]["ts"] if hist else None, "last_scraped": row[2]}
+
 
 def market_page():
     # template dibaca tiap request, jadi edit HTML langsung terlihat tanpa restart
     with open(os.path.join(HERE, "templates", "market.html"), encoding="utf-8") as f:
         return f.read()
 
-NO_KEY_PAGE ="""<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"><title>Riset Kompetitor</title>
-<style>body{font-family:-apple-system,sans-serif;max-width:560px;margin:15vh auto;padding:0 16px;color:#1e293b;line-height:1.6}
-code{background:#f1f5f9;padding:2px 6px;border-radius:4px}</style></head><body>
-<h2>Chat butuh API key OpenRouter</h2>
-<p>Isi <code>OPENROUTER_API_KEY</code> di file <code>.env</code>, lalu jalankan ulang:</p>
-<p><code>source .env &amp;&amp; python app.py</code></p>
-<p>Sementara itu pakai <a href="/market">Riset pasar</a> (tidak butuh key) atau <a href="/tools">mode manual</a>.</p></body></html>"""
+NO_KEY_PAGE = """<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Raqio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #F6F5F3; --panel: #FFFFFF; --sunk: #ECEBE9; --line: #E2E1E0; --line-2: #EFEEEC;
+  --text: #0B0B0B; --muted: #6F6E6B; --faint: #A3A29F;
+  --ink: #161616; --ink-text: #F8F8F8; --accent: #00BC87; --accent-soft: #E3F6EF; --bad: #D4483B;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0B0B0B; --panel: #141414; --sunk: #1C1C1C; --line: #262626; --line-2: #1E1E1E;
+  --text: #F2F2F0; --muted: #9A9996; --faint: #6A6967;
+  --ink: #F2F2F0; --ink-text: #0B0B0B; --accent: #19D29C; --accent-soft: #0F2A21; --bad: #EF6B5F; } }
+:root[data-theme="dark"] {
+  --bg: #0B0B0B; --panel: #141414; --sunk: #1C1C1C; --line: #262626; --line-2: #1E1E1E;
+  --text: #F2F2F0; --muted: #9A9996; --faint: #6A6967;
+  --ink: #F2F2F0; --ink-text: #0B0B0B; --accent: #19D29C; --accent-soft: #0F2A21; --bad: #EF6B5F; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { font-family: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg);
+       color: var(--text); font-size: 14px; -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+button { font: inherit; cursor: pointer; }
+code { font-family: "Geist Mono", ui-monospace, monospace; font-size: 12.5px; background: var(--sunk); padding: 2px 6px; border-radius: 5px; }
+.top { display: flex; align-items: center; gap: 20px; padding: 14px 28px; border-bottom: 1px solid var(--line); background: var(--bg);
+       position: sticky; top: 0; z-index: 20; }
+.brand { font-weight: 700; letter-spacing: -.02em; font-size: 15px; display: flex; align-items: center; gap: 8px; text-decoration: none; }
+.brand i { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); display: inline-block; }
+.top nav { margin-left: auto; display: flex; gap: 18px; flex-wrap: wrap; }
+.top nav a { text-decoration: none; color: var(--muted); font-size: 13px; }
+.top nav a:hover, .top nav a.on { color: var(--text); }
+.hero { max-width: 820px; margin: 0 auto; padding: 9vh 0 0; }
+h1 { font-size: 44px; letter-spacing: -.04em; line-height: 1.05; margin: 0 0 12px; font-weight: 600; }
+h1 span { color: var(--faint); }
+.lead { color: var(--muted); font-size: 16px; line-height: 1.55; margin: 0 0 26px; max-width: 600px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; background: var(--ink); color: var(--ink-text); border: 0;
+       border-radius: 10px; padding: 0 20px; font-weight: 500; height: 42px; white-space: nowrap; text-decoration: none; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.ghost { background: var(--panel); color: var(--text); border: 1px solid var(--line); }
+.feats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 36px; }
+.feat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; text-decoration: none; display: block; }
+.feat:hover { border-color: var(--faint); }
+.feat b { display: block; font-weight: 600; margin-bottom: 4px; }
+.feat span { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.feat em { font-style: normal; color: var(--accent); font-size: 12px; display: block; margin-top: 10px; }
+@media (max-width: 720px) { .top { padding: 12px 16px; gap: 12px; } .top nav { gap: 12px; } h1 { font-size: 30px; }
+  .hero { padding-top: 5vh; } .feats { grid-template-columns: 1fr; } }
+</style>
+<style>.wrap { padding: 0 16px 80px; } .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.note { margin-top: 28px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; color: var(--muted); line-height: 1.7; }
+.note b { color: var(--text); font-weight: 600; }</style></head><body>
+<div class="top"><a class="brand" href="/"><i></i>raqio</a>
+  <nav><a href="/" class="on">Chat</a><a href="/market">Riset pasar</a><a href="/competitors" target="_blank">Kompetitor IG</a><a href="/tools">Manual</a></nav></div>
+<div class="wrap"><div class="hero">
+  <h1>Kenali pasarmu. <span>Temukan celahnya.</span></h1>
+  <p class="lead">Peta pemain per industri dan wilayah, skor kekuatan, hidden gem, dan daftar prospek yang siap dihubungi lewat WhatsApp.</p>
+  <div class="acts"><a class="btn" href="/market">Mulai riset pasar</a><a class="btn ghost" href="/tools">Mode manual</a></div>
+  <div class="note"><b>Chat dengan agent belum aktif.</b> Isi <code>OPENROUTER_API_KEY</code> di file <code>.env</code>,
+    lalu jalankan ulang <code>.venv/bin/python app.py</code>. Riset pasar dan mode manual tetap bisa dipakai tanpa key.</div>
+  <div class="feats">
+    <a class="feat" href="/market"><b>Riset pasar</b><span>Siapa yang kuat, siapa yang lemah, dan seberapa padat pasarnya.</span><em>Buka →</em></a>
+    <a class="feat" href="/competitors" target="_blank"><b>Kompetitor IG</b><span>Followers, engagement, dan pertumbuhan akun pesaing.</span><em>Buka →</em></a>
+    <a class="feat" href="/tools"><b>Mode manual</b><span>Atur sendiri kategori, radius, dan jumlah akun.</span><em>Buka →</em></a>
+  </div>
+</div></div></body></html>"""
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -653,9 +878,30 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0]
         if path == "/":
-            self._send(200, CHAT_PAGE if OPENROUTER_KEY else NO_KEY_PAGE)
+            self._send(200, themed(CHAT_PAGE if OPENROUTER_KEY else NO_KEY_PAGE))
         elif path == "/market":
-            self._send(200, market_page())
+            self._send(200, themed(market_page()))
+        elif path in ("/prospects", "/watch"):
+            self._send(200, themed(template(path.strip("/") + ".html")))
+        elif path.startswith("/static/"):
+            name = os.path.basename(path)
+            fp = os.path.join(HERE, "templates", name)
+            if not re.fullmatch(r"[\w-]+\.(js|css|svg)", name) or not os.path.exists(fp):
+                return self._send(404, "Not found")
+            ctype = {"js": "text/javascript", "css": "text/css", "svg": "image/svg+xml"}[name.rsplit(".", 1)[1]]
+            with open(fp, encoding="utf-8") as f:
+                self._send(200, f.read(), ctype + "; charset=utf-8")
+        elif path == "/prospects/data":
+            import market
+            self._send(200, json.dumps({"items": market.prospect_board(), "statuses": market.LEAD_STATUSES},
+                                       ensure_ascii=False), "application/json")
+        elif path == "/watch/data":
+            import market
+            self._send(200, json.dumps(market.watch_overview(), ensure_ascii=False), "application/json")
+        elif path == "/business":
+            from urllib.parse import parse_qs, urlparse
+            ig = re.sub(r"[^A-Za-z0-9._]", "", parse_qs(urlparse(self.path).query).get("ig", [""])[0]).lower()
+            self._send(200, json.dumps(ig_profile(ig), ensure_ascii=False), "application/json")
         elif path == "/market/watches":
             import market
             conn = market.db()
@@ -691,7 +937,15 @@ class Handler(BaseHTTPRequestHandler):
                 row = conn.execute("SELECT report FROM market_reports WHERE id=?", (rid or 0,)).fetchone()
             finally:
                 conn.close()
-            self._send(200 if row else 404, row[0] if row else '{"error":"tidak ada"}', "application/json")
+            if not row:
+                return self._send(404, '{"error":"tidak ada"}', "application/json")
+            import market
+            rep = market.score_all(json.loads(row[0]))  # laporan lama belum punya lead_score
+            leads = market.get_leads()
+            for p in rep.get("all") or []:
+                if market.lead_key(p) in leads:
+                    p["lead"] = leads[market.lead_key(p)]
+            self._send(200, json.dumps(rep, ensure_ascii=False), "application/json")
         elif path == "/chat/poll":
             jid = (self.path.split("job=", 1) + [""])[1].split("&")[0]
             with CHAT["lock"]:
@@ -716,18 +970,46 @@ class Handler(BaseHTTPRequestHandler):
             with JOB["lock"]:
                 running = bool(JOB["proc"] and JOB["proc"].poll() is None)
                 log = "".join(JOB["log"][-500:])
-            self._send(200, json.dumps({"running": running, "log": log}), "application/json")
+            self._send(200, json.dumps({"running": running, "log": log, "started": JOB.get("started"),
+                                        "stopped": JOB.get("stopped", False)}), "application/json")
         else:
             self._send(404, "Not found")
 
     def do_POST(self):
-        if self.path not in ("/run", "/ask", "/chat", "/market/run", "/market/watch", "/market/compare/run"):
+        if self.path not in ("/run", "/ask", "/chat", "/market/run", "/market/watch", "/market/compare/run",
+                             "/market/lead", "/market/detail", "/stop", "/chat/stop"):
             return self._send(404, "Not found")
         try:
             n = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(n) or b"{}")
         except (ValueError, json.JSONDecodeError):
             return self._send(400, json.dumps({"error": "Request tidak valid."}), "application/json")
+        if self.path == "/market/lead":
+            import market
+            try:
+                market.set_lead(str(data.get("key", ""))[:300], str(data.get("name", ""))[:200],
+                                str(data.get("status", "")),
+                                None if data.get("note") is None else str(data["note"])[:500],
+                                None if data.get("remind") is None else str(data["remind"])[:10])
+            except ValueError as e:
+                return self._send(400, json.dumps({"error": str(e)}), "application/json")
+            return self._send(200, json.dumps({"ok": True}), "application/json")
+        if self.path == "/stop":
+            return self._send(200, json.dumps({"ok": stop_job()}), "application/json")
+        if self.path == "/chat/stop":
+            return self._send(200, json.dumps({"ok": chat_stop(str(data.get("job", "")))}), "application/json")
+        if self.path == "/market/detail":
+            import market
+            with JOB["lock"]:
+                busy = bool(JOB["proc"] and JOB["proc"].poll() is None)
+            if busy:  # dua browser Google Maps sekaligus memancing blokir
+                return self._send(409, json.dumps({"error": "Tunggu riset yang sedang jalan selesai dulu."}),
+                                  "application/json")
+            try:
+                p = market.detail_one(int(data.get("report_id") or 0), str(data.get("key", ""))[:300])
+            except (ValueError, RuntimeError) as e:
+                return self._send(400, json.dumps({"error": str(e)}), "application/json")
+            return self._send(200, json.dumps(p, ensure_ascii=False), "application/json")
         if self.path == "/market/watch":
             import market
             ind = str(data.get("industry", "")).strip()[:60]

@@ -119,6 +119,217 @@ def wa_link(phone: str) -> str:
     return f"https://wa.me/{d}" if datastore.is_mobile(d) else ""
 
 
+LEAD_STATUSES = ("baru", "dihubungi", "tertarik", "deal", "tolak")
+
+
+def lead_score(p):
+    """Skor peluang jual 0-100 + alasannya. None kalau detail (telepon/website) belum diambil."""
+    if not p.get("_detailed"):
+        return None, []
+    s, why = 0, []
+    rating, reviews = p.get("rating") or 0, p.get("reviews") or 0
+    # bisa dihubungi
+    if wa_link(p.get("phone")):
+        s += 25; why.append("bisa WhatsApp")
+    elif p.get("phone"):
+        s += 10; why.append("ada telepon")
+    if p.get("emails"):
+        s += 5; why.append("ada email")
+    # celah digital
+    if not p.get("website"):
+        s += 20; why.append("tanpa website")
+    if not p.get("instagram") or p.get("instagram_shared"):
+        s += 15; why.append("IG tidak ditemukan")
+    # bisnis sehat = mampu bayar dan layak dibantu
+    if rating >= 4.5:
+        s += 15; why.append(f"rating {rating}")
+    elif rating >= 4.0:
+        s += 8
+    if 30 <= reviews <= 800:
+        s += 15; why.append(f"{reviews} ulasan, aktif")
+    elif reviews < 30:
+        s += 5
+    if (p.get("reviews_per_month") or 0) > 0:
+        s += 5; why.append("sedang tumbuh")
+    # bukan target: jaringan besar / pemain dominan
+    if (p.get("branches_in_area") or 1) > 1:
+        s -= 25; why.append("jaringan bercabang")
+    if reviews > 800:
+        s -= 40; why.append("pemain besar")
+    if not (p.get("phone") or p.get("instagram") or p.get("emails")):
+        s = min(s, 20); why.append("tidak ada kontak")
+    return max(0, min(100, s)), why
+
+
+def score_all(report):
+    """Tempel lead_score ke semua bisnis di laporan (juga untuk laporan lama)."""
+    for key in ("all", "prospects", "leaders", "gems", "weak", "growing"):
+        for p in report.get(key) or []:
+            p["lead_score"], p["lead_reasons"] = lead_score(p)
+    return report
+
+
+def lead_key(p):
+    return p.get("place_id") or p.get("maps_url") or ""
+
+
+def leads_db(conn):
+    conn.execute("""CREATE TABLE IF NOT EXISTS leads (
+        key TEXT PRIMARY KEY, name TEXT, status TEXT, note TEXT, updated TEXT)""")
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(leads)")}
+    if "remind" not in cols:  # migrasi: tanggal pengingat follow up (YYYY-MM-DD)
+        conn.execute("ALTER TABLE leads ADD COLUMN remind TEXT")
+    return conn
+
+
+def get_leads():
+    conn = leads_db(db())
+    try:
+        return {k: {"status": s, "note": n or "", "updated": u, "remind": r or ""}
+                for k, s, n, u, r in conn.execute("SELECT key, status, note, updated, remind FROM leads")}
+    finally:
+        conn.close()
+
+
+def set_lead(key, name, status, note=None, remind=None):
+    """Simpan status lead. note/remind None = pertahankan nilai lama."""
+    if not key or status not in LEAD_STATUSES:
+        raise ValueError("key/status tidak valid")
+    if remind and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", remind):
+        raise ValueError("format tanggal pengingat harus YYYY-MM-DD")
+    conn = leads_db(db())
+    try:
+        old = conn.execute("SELECT note, remind FROM leads WHERE key=?", (key,)).fetchone() or ("", "")
+        conn.execute("INSERT OR REPLACE INTO leads (key, name, status, note, updated, remind) VALUES (?,?,?,?,?,?)",
+                     (key, name, status, old[0] if note is None else note,
+                      datetime.now(timezone.utc).isoformat(), old[1] if remind is None else remind))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def latest_reports(conn):
+    """Laporan terbaru per (industri, wilayah): [(id, report)]."""
+    seen, out = set(), []
+    for rid, ind, area, rep in conn.execute(
+            "SELECT id, industry, area, report FROM market_reports ORDER BY id DESC"):
+        k = (ind.lower().strip(), area.lower().strip())
+        if k not in seen:
+            seen.add(k)
+            out.append((rid, json.loads(rep)))
+    return out
+
+
+def prospect_board(min_score=40):
+    """Semua prospek dari laporan terbaru tiap wilayah + status follow up-nya, tanpa duplikat."""
+    conn = db()
+    try:
+        reports = latest_reports(conn)
+    finally:
+        conn.close()
+    leads = get_leads()
+    best = {}
+    for rid, r in reports:
+        score_all(r)
+        for p in r.get("all") or []:
+            k = lead_key(p)
+            if not k or p.get("lead_score") is None:
+                continue
+            if p["lead_score"] < min_score and k not in leads:
+                continue
+            item = dict(p, key=k, industry=r["industry"], area=r["area"], report_id=rid, lead=leads.get(k))
+            if k not in best or item["lead_score"] > best[k]["lead_score"]:
+                best[k] = item
+    return sorted(best.values(), key=lambda x: -x["lead_score"])
+
+
+def report_changes(prev, cur):
+    """Apa yang berubah antara dua laporan wilayah yang sama."""
+    old = {lead_key(p): p for p in prev.get("all") or []}
+    new = {lead_key(p): p for p in cur.get("all") or []}
+    out = {"new": [], "gone": [], "rating_up": [], "rating_down": [], "reviews_jump": []}
+    for k, p in new.items():
+        q = old.get(k)
+        if not q:
+            out["new"].append(p)
+            continue
+        dr = round((p.get("rating") or 0) - (q.get("rating") or 0), 1)
+        if dr >= 0.1 and q.get("rating"):
+            out["rating_up"].append(dict(p, delta=dr))
+        elif dr <= -0.1 and q.get("rating"):
+            out["rating_down"].append(dict(p, delta=dr))
+        jump = (p.get("reviews") or 0) - (q.get("reviews") or 0)
+        if jump >= max(10, 0.1 * (q.get("reviews") or 0)):
+            out["reviews_jump"].append(dict(p, delta=jump))
+    out["gone"] = [p for k, p in old.items() if k not in new]
+    for k in out:
+        out[k].sort(key=lambda p: -abs(p.get("delta") or p.get("reviews") or 0))
+    return out
+
+
+def watch_overview():
+    """Wilayah yang dipantau + perubahan sejak riset sebelumnya."""
+    conn = db()
+    try:
+        watches = {(a.lower().strip(), b.lower().strip()): {"industry": a, "area": b, "every_days": c, "last_run": d}
+                   for a, b, c, d in conn.execute("SELECT industry, area, every_days, last_run FROM market_watches")}
+        pairs = {(a.lower().strip(), b.lower().strip()): (a, b) for a, b in conn.execute(
+            "SELECT DISTINCT industry, area FROM market_reports")}
+        out = []
+        for k, (ind, area) in pairs.items():
+            rows = conn.execute("SELECT id, report FROM market_reports WHERE lower(industry)=? AND lower(area)=? "
+                                "ORDER BY id DESC LIMIT 2", k).fetchall()
+            cur = json.loads(rows[0][1])
+            item = {"industry": ind, "area": area, "report_id": rows[0][0], "created": cur["created"],
+                    "businesses": cur["summary"]["businesses"], "watch": watches.get(k), "runs": len(rows),
+                    "changes": None}
+            if len(rows) > 1:
+                prev = json.loads(rows[1][1])
+                item["prev_created"] = prev["created"]
+                item["changes"] = report_changes(prev, cur)
+            out.append(item)
+    finally:
+        conn.close()
+    out.sort(key=lambda x: x["created"], reverse=True)
+    out.sort(key=lambda x: x["watch"] is None)  # yang dipantau di atas, lalu terbaru
+    return out
+
+
+def detail_one(report_id, key):
+    """Ambil telepon/website/IG satu bisnis dari Google Maps, lalu perbarui laporannya."""
+    conn = db()
+    try:
+        row = conn.execute("SELECT report FROM market_reports WHERE id=?", (report_id,)).fetchone()
+        if not row:
+            raise ValueError("laporan tidak ada")
+        rep = json.loads(row[0])
+        p = next((x for x in rep.get("all") or [] if lead_key(x) == key), None)
+        if not p or not p.get("maps_url"):
+            raise ValueError("bisnis tidak ada di laporan")
+        p.pop("_detailed", None)
+        gmaps.details([p], limit=1)
+        if not p.get("_detailed"):
+            raise RuntimeError("Google Maps tidak merespons, coba lagi sebentar lagi")
+        if p.get("website") and not p.get("instagram"):
+            find_instagram([p], limit=1)
+        p.update({k: v for k, v in (datastore.clean_place(dict(p)) or {}).items()
+                  if k in ("phone", "website", "instagram")})
+        if p.get("phone"):
+            p["whatsapp"] = wa_link(p["phone"])
+        conn.execute("UPDATE market_reports SET report=? WHERE id=?", (json.dumps(rep, ensure_ascii=False), report_id))
+        if p.get("place_id"):
+            got = conn.execute("SELECT data FROM places WHERE place_id=?", (p["place_id"],)).fetchone()
+            if got:
+                d = json.loads(got[0])
+                d.update({k: p[k] for k in ("phone", "website", "instagram", "_detailed") if p.get(k)})
+                conn.execute("UPDATE places SET data=? WHERE place_id=?", (json.dumps(d, ensure_ascii=False), p["place_id"]))
+        conn.commit()
+    finally:
+        conn.close()
+    p["lead_score"], p["lead_reasons"] = lead_score(p)
+    return p
+
+
 def find_instagram(places, limit=25):
     """Website / halaman link-in-bio -> akun IG."""
     from competitor_website_monitor import scan
@@ -188,7 +399,7 @@ def build_report(industry, area, places):
             "cukup terkonsentrasi" if hhi > 1500 else "terfragmentasi (banyak pemain kecil)")
 
     def slim(p, extra=()):
-        keys = ("name", "rating", "reviews", "category", "address", "maps_url", "instagram",
+        keys = ("place_id", "name", "rating", "reviews", "category", "address", "maps_url", "instagram",
                 "website", "phone", "reviews_per_month", "status", "emails", "price", "dist_km",
                 "instagram_shared", "website_shared", "branches_in_area", "lat", "lon",
                 "_detailed") + tuple(extra)
@@ -218,7 +429,7 @@ def build_report(industry, area, places):
         if p["rating"] < 4.3:
             gaps.append(f"rating {p['rating']}")
         if gaps and p["reviews"] <= 800 and (p.get("phone") or p.get("instagram")):
-            score = len(gaps) + (1 if wa_link(p.get("phone")) else 0) + (1 if p["rating"] >= 4.5 else 0)
+            score, _ = lead_score(p)
             prospects.append(dict(slim(p), gaps=gaps, score=score))
     prospects.sort(key=lambda x: (-x["score"], -x.get("rating", 0)))
 
@@ -413,7 +624,7 @@ def run(industry, area, max_results=120, detail_limit=30):
     quality["chains"] = len({p["brand_group"] for p in places if p.get("branches_in_area", 1) > 1})
     quality["brands"] = len({p["brand_group"] for p in places})
     log.info("[4/5] Susun laporan…")
-    report = build_report(industry, area, places)
+    report = score_all(build_report(industry, area, places))
     report["data_quality"] = quality
     report["summary"]["capped"] = len(places) >= max_results  # jumlah bisnis mentok di batas
     ai = llm_insights(report)
